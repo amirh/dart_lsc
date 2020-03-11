@@ -23,6 +23,11 @@ class GitHubIssue {
     return title.substring(1, closingBracketIndex);
   }
 
+  void markManualIntervention(String comment) async {
+    await addComment(comment);
+    moveToProjectColumn('Need Manual Intervention');
+  }
+
   void moveToProjectColumn(String columnName) async {
     String columnId = project.columns[columnName];
     if (columnId == null) {

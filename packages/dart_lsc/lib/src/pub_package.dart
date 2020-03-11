@@ -12,6 +12,16 @@ class PubPackage {
 
   final String name;
 
+  Future<String> fetchHomepageUrl() async {
+    Uri metadataUri = Uri.https('pub.dev', '/api/packages/$name');
+    http.Response response = await http.get(metadataUri);
+    if (response.statusCode != 200) {
+      throw Exception('Failed fetching $metadataUri response was: ${response.body}');
+    }
+    Map<String, dynamic> responseMap = jsonDecode(response.body);
+    return responseMap['latest']['pubspec']['homepage'];
+  }
+
   Future<Directory> fetchLatest(Directory baseDirectory) async {
     Directory targetDir = await baseDirectory.childDirectory(name).create();
     await downloadTarball(targetDir);

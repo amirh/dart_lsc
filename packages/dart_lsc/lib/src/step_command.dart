@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io' show Process, ProcessResult;
 
+import 'package:dart_lsc/src/git_repository.dart';
 import 'package:dart_lsc/src/pub_package.dart';
 import 'package:file/file.dart';
 import 'package:file/local.dart';
@@ -124,11 +125,35 @@ class StepCommand extends BaseLscCommand {
         await issue.closeIssue();
       }
     }
+    baseDir.delete(recursive: true);
     return nonMigratedIssues;
   }
 
   void handleTodo(List<GitHubIssue> issues) async {
+    Directory baseDir = await fs.systemTempDirectory.createTemp('lsc');
     issues = await closeIfMigrated(issues, 'No Need To Migrate');
+    for (GitHubIssue issue in issues) {
+      PubPackage pubPackage = PubPackage(issue.package);
+      String homepage = await pubPackage.fetchHomepageUrl();
+      GitHubGitRepository repository = GitHubGitRepository.fromUrl(homepage);
+      if (repository == null) {
+        issue.markManualIntervention("dart_lsc can't detect a git repository base on url: $homepage");
+        continue;
+      }
+      print('cloning $repository');
+      GitClone clone;
+      try {
+        clone = await repository.clone(baseDir);
+      } catch(e) {
+        issue.markManualIntervention("dart_lsc failed cloning\n```\n$e\n```");
+        continue;
+      }
+      if (!clone.pubspec.existsSync()) {
+        issue.markManualIntervention("dart_lsc can't find the package's pubspec on git");
+        continue;
+      }
+      // if failed move to manual intervention
+    }
   }
 
   void handlePrSent(List<GitHubIssue> issues) async {
