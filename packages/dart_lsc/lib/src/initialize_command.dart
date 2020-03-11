@@ -35,16 +35,17 @@ class InitializeCommand extends BaseLscCommand {
     final GitHubProject project = await repository.createLscProject(title);
 
 
-    List<String> packagesToMigrate = [];
+    Set<String> packagesToMigrate = {};
     for (String package in dependentPackagesOf) {
       DependentsFetcher fetcher = DependentsFetcher(package);
       while (await fetcher.fetchNextPage()) {}
       packagesToMigrate.addAll(fetcher.dependentPackages);
     }
 
-    for (int i = 0; i < packagesToMigrate.length; i++) {
-      final String package = packagesToMigrate[i];
-      print('Creating issue ${i+1} / ${packagesToMigrate.length} ($package)');
+    int i = 0;
+    for (String package in packagesToMigrate) {
+      i++;
+      print('Creating issue $i / ${packagesToMigrate.length} ($package)');
       await project.createIssue(
           '[$package] $title',
           renderIssueBody(packageToMigrate: package)
