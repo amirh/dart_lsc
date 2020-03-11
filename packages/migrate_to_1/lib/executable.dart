@@ -1,26 +1,34 @@
 import 'dart:async';
-import 'dart:io';
+import 'dart:io' show stderr;
 
 import 'package:args/command_runner.dart';
-import 'package:file/file.dart';
-import 'package:file/local.dart';
-import 'package:pub_semver/pub_semver.dart';
-import 'package:pubspec_parse/pubspec_parse.dart';
+import 'package:migrate_to_1/migrate_base.dart';
+import 'package:migrate_to_1/src/migrate_to_1.dart';
 
-FileSystem fs = LocalFileSystem();
+import 'src/global.dart' show fs;
 
 Future<int> main(List<String> arguments) {
   final CommandRunner runner = CommandRunner<int>('migrate_to_1', 'Migrates a dependent package to support 1.0')
-      ..addCommand(ValidateCommand());
+      ..addCommand(IsChangeNeededCommand(MigrateTo1()));
   return runner.run(arguments);
 }
 
-class ValidateCommand extends Command<int> {
+
+class IsChangeNeededCommand extends Command<int> {
+  IsChangeNeededCommand(this.migration) {
+    argParser.addOption(
+        'script_args',
+        help: migration.optionsHelp
+    );
+  }
+
+  final Migration migration;
+
   @override
   String get description => 'validate the a dependent package has been updated to support 1.0';
 
   @override
-  String get name => 'validate';
+  String get name => 'is_change_needed';
 
   @override
   String get invocation {
@@ -36,36 +44,18 @@ class ValidateCommand extends Command<int> {
 
   @override
   FutureOr<int> run() async {
-    final File pubspecFile = fs.currentDirectory.childFile('pubspec.yaml');
-    if (!await pubspecFile.exists()) {
-      stderr.write("Can't find a pubspec.yaml file in ${fs.currentDirectory}");
+    final String dependency = argResults.rest[0];
+    IsChangeNeededResult result = await migration.isChangeNeeded(fs.currentDirectory, dependency, argResults['script_args']);
+
+    if (result.error != null) {
+      stderr.write(result.error);
       return 1;
     }
-
-    final String package = argResults.rest[0];
-    final String version = argResults.rest[1];
-
-    final Pubspec pubspec = Pubspec.parse(await pubspecFile.readAsString());
-    if (!pubspec.dependencies.containsKey(package)) {
-      print('${pubspec.name} does not depend on $package, no migration needed');
+    if (result.isChangeNeeded) {
+      return 2;
+    } else {
+      print(result.message);
       return 0;
     }
-
-    Dependency dependency = pubspec.dependencies[package];
-    if (!(pubspec.dependencies['share'] is HostedDependency)) {
-      stderr.write("Can't migrate a non hosted depenency: $dependency");
-      return 1;
-    }
-    HostedDependency hostedDependency = dependency;
-    final VersionConstraint constraint = hostedDependency.version;
-    if (constraint.allows(Version(1, 0, 0))) {
-      return 0;
-    }
-
-    if (!constraint.allows(Version.parse(version))) {
-      print('${pubspec.name} is not compatible with $package $version');
-      return 0;
-    }
-    return 2;
   }
 }
