@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Process, ProcessResult;
 
 import 'package:dart_lsc/src/pub_package.dart';
 import 'package:file/file.dart';
@@ -29,6 +30,9 @@ class StepCommand extends BaseLscCommand {
   @override
   String get name => 'step';
 
+  String _updateScript;
+  String _updateScriptArgs;
+
   @override
   FutureOr<int> run() async {
     if (!verifyCommandLineOptions()) {
@@ -40,6 +44,8 @@ class StepCommand extends BaseLscCommand {
     final String owner = argResults['tracking_repository_owner'];
     final String repositoryName = argResults['tracking_repository'];
     final String projectNumber = argResults['project'];
+    _updateScript = argResults['update_script'];
+    _updateScriptArgs = argResults['update_script_args'];
 
     final GitHubClient gitHub = GitHubClient(token);
     final GitHubRepository repository = await gitHub.getRepository(owner, repositoryName);
@@ -51,37 +57,77 @@ class StepCommand extends BaseLscCommand {
     await handleNeedManualIntervention(project);
   }
 
-  Future<List<GitHubIssue>> closeIfMigrated(List<GitHubIssue> issues) async {
+  Future<List<GitHubIssue>> closeIfMigrated(List<GitHubIssue> issues, String targetColumnName, {bool inManualIntervention = false}) async {
     Directory baseDir = await fs.systemTempDirectory.createTemp('lsc');
     print('Downloading packages to $baseDir ..');
     int i = 0;
+    final List<GitHubIssue> nonMigratedIssues = [];
     for (GitHubIssue issue in issues) {
       i++;
       PubPackage package = PubPackage(issue.package);
       print ('Fetching package $i of ${issues.length} (${package.name})');
       Directory packageDir = await package.fetchLatest(baseDir);
-      // TODO: check if package has migrated
+      final List<String> args = ['is_change_needed', '${issue.package}', '--script_args=$_updateScriptArgs'];
+      final ProcessResult result = await Process.run(
+          _updateScript,
+          args,
+          workingDirectory: packageDir.path,
+      );
+
+      // Update needed
+      if (result.exitCode == 2) {
+        nonMigratedIssues.add(issue);
+        continue;
+      }
+
+      // Update not needed.
+      if (result.exitCode == 0) {
+        final String msg = 'Further migration is not needed.\n\n${result.stdout}';
+        await issue.moveToProjectColumn(targetColumnName);
+        await issue.addComment(msg);
+        await issue.closeIssue();
+        // close issue.
+        continue;
+      }
+
+      // Update script had an error.
+      if (inManualIntervention) {
+        // Issue is already waiting for manual intervention.
+        continue;
+      }
+      final StringBuffer msg = StringBuffer();
+      msg.write('Manual intervention is needed.\n\n');
+      msg.write('Executed command `$_updateScriptArgs ${args.join(' ')}`\n\n');
+      msg.write('stdout:\n```\n');
+      msg.write(result.stdout);
+      msg.write('\n```\n\n');
+      msg.write('stderr:\n```\n');
+      msg.write(result.stdout);
+      msg.write('\n```');
+      await issue.moveToProjectColumn('Need Manual Intervention');
+      await issue.addComment(msg.toString());
     }
+    return nonMigratedIssues;
   }
 
   void handleTodo(GitHubProject project) async {
     List<GitHubIssue> issues = await project.getColumnIssues('TODO');
-    issues = await closeIfMigrated(issues);
+    issues = await closeIfMigrated(issues, 'No Need To Migrate');
 
   }
 
   void handlePrSent(GitHubProject project) async {
     List<GitHubIssue> issues = await project.getColumnIssues('PR Sent');
-    issues = await closeIfMigrated(issues);
+    issues = await closeIfMigrated(issues, 'Migrated');
   }
 
   void handlePrMerged(GitHubProject project) async {
     List<GitHubIssue> issues = await project.getColumnIssues('PR Merged');
-    issues = await closeIfMigrated(issues);
+    issues = await closeIfMigrated(issues, 'Migrated');
   }
 
   void handleNeedManualIntervention(GitHubProject project) async {
     List<GitHubIssue> issues = await project.getColumnIssues('Need Manual Intervention');
-    issues = await closeIfMigrated(issues);
+    issues = await closeIfMigrated(issues, 'Migrated', inManualIntervention: true);
   }
 }

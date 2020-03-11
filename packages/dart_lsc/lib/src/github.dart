@@ -3,14 +3,17 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class GitHubIssue {
-  GitHubIssue(this.repository, this.number, this.title) :
+  GitHubIssue(this.repository, this.project, this.number, this.id, this.title, this.cardId) :
         assert(repository != null),
         assert(number != null),
         assert(title != null);
 
   final GitHubRepository repository;
+  final GitHubProject project;
   final int number;
+  String id;
   final String title;
+  final String cardId;
 
   String get package {
     int closingBracketIndex = title.indexOf(']');
@@ -18,6 +21,46 @@ class GitHubIssue {
       throw Exception('Expecting issue title to start with "[<package]" was: $title');
     }
     return title.substring(1, closingBracketIndex);
+  }
+
+  void moveToProjectColumn(String columnName) async {
+    String columnId = project.columns[columnName];
+    if (columnId == null) {
+      throw Exception("Can't move card to an unknown column $columnName");
+    }
+    final String query = '''
+      mutation {
+        moveProjectCard(input:{cardId:"${cardId}",columnId:"$columnId"}) {
+          clientMutationId
+        }
+      }
+    ''';
+
+    await repository.client.executeGraphQL(query);
+  }
+
+  void addComment(String body) async {
+    final String query = '''
+      mutation {
+        addComment(input:{subjectId:"$id",body:"""$body"""}) {
+          clientMutationId
+        }
+      }
+    ''';
+
+    await repository.client.executeGraphQL(query);
+  }
+
+  void closeIssue() async {
+    final String query = '''
+      mutation {
+        closeIssue(input:{issueId:"$id"}) {
+          clientMutationId
+        }
+      }
+    ''';
+
+    await repository.client.executeGraphQL(query);
   }
 
   @override
@@ -93,6 +136,7 @@ class GitHubProject {
                 totalCount
                 edges {
                   node {
+                    id
                     content {
                       ... on Issue {
                         id
@@ -119,7 +163,15 @@ class GitHubProject {
 
       for (Map<String,dynamic> edge in cards['edges']) {
         Map<String, dynamic> issueMap = edge['node']['content'];
-        allIssues.add(GitHubIssue(repository, issueMap['number'], issueMap['title']));
+        String cardId = edge['node']['id'];
+        allIssues.add(GitHubIssue(
+            repository,
+            this,
+            issueMap['number'],
+            issueMap['id'],
+            issueMap['title'],
+            cardId
+        ));
       }
       seen += pageSize;
     } while (seen < totalCount);
