@@ -32,6 +32,7 @@ class StepCommand extends BaseLscCommand {
 
   String _updateScript;
   String _updateScriptArgs;
+  List<String> _dependentPackagesOf;
 
   @override
   FutureOr<int> run() async {
@@ -39,7 +40,7 @@ class StepCommand extends BaseLscCommand {
       return 1;
     }
 
-    List<String> dependentPackagesOf = argResults['dependent_packages_of'];
+    _dependentPackagesOf = argResults['dependent_packages_of'];
     final String token = argResults['github_auth_token'];
     final String owner = argResults['tracking_repository_owner'];
     final String repositoryName = argResults['tracking_repository'];
@@ -51,10 +52,15 @@ class StepCommand extends BaseLscCommand {
     final GitHubRepository repository = await gitHub.getRepository(owner, repositoryName);
     final GitHubProject project = await repository.getLscProject(projectNumber);
 
-    await handleTodo(project);
-    await handlePrSent(project);
-    await handlePrMerged(project);
-    await handleNeedManualIntervention(project);
+    List<GitHubIssue> todoIssues = await project.getColumnIssues('TODO');
+    List<GitHubIssue> prSentIssues = await project.getColumnIssues('PR Sent');
+    List<GitHubIssue> prMergedIssues = await project.getColumnIssues('PR Merged');
+    List<GitHubIssue> manualInterventionIssues = await project.getColumnIssues('Need Manual Intervention');
+
+    await handleTodo(todoIssues);
+    await handlePrSent(prSentIssues);
+    await handlePrMerged(prMergedIssues);
+    await handleNeedManualIntervention(manualInterventionIssues);
   }
 
   Future<List<GitHubIssue>> closeIfMigrated(List<GitHubIssue> issues, String targetColumnName, {bool inManualIntervention = false}) async {
@@ -67,67 +73,65 @@ class StepCommand extends BaseLscCommand {
       PubPackage package = PubPackage(issue.package);
       print ('Fetching package $i of ${issues.length} (${package.name})');
       Directory packageDir = await package.fetchLatest(baseDir);
-      final List<String> args = ['is_change_needed', '${issue.package}', '--script_args=$_updateScriptArgs'];
-      final ProcessResult result = await Process.run(
+
+      bool updateNeeded = false;
+      StringBuffer errorMessage = StringBuffer();
+      bool hadError = false;
+      for (String dependency in _dependentPackagesOf) {
+        final List<String> args = ['is_change_needed', '${issue.package}', '--script_args=$_updateScriptArgs'];
+        final ProcessResult result = await Process.run(
           _updateScript,
           args,
           workingDirectory: packageDir.path,
-      );
-
-      // Update needed
-      if (result.exitCode == 2) {
-        nonMigratedIssues.add(issue);
-        continue;
+        );
+        if (result.exitCode == 2) {
+          updateNeeded = true;
+          continue;
+        }
+        if (result.exitCode != 0) {
+          hadError = true;
+          errorMessage.write('Executed command `$_updateScriptArgs ${args.join(' ')}`\n\n');
+          errorMessage.write('stdout:\n```\n');
+          errorMessage.write(result.stdout);
+          errorMessage.write('\n```\n\n');
+          errorMessage.write('stderr:\n```\n');
+          errorMessage.write(result.stderr);
+          errorMessage.write('\n```\n\n');
+        }
       }
 
-      // Update not needed.
-      if (result.exitCode == 0) {
-        final String msg = 'Further migration is not needed.\n\n${result.stdout}';
+      if (hadError) {
+        if (!inManualIntervention) {
+          final String msg = 'Manual intervention is needed\n\n${errorMessage.toString()}';
+          await issue.moveToProjectColumn('Need Manual Intervention');
+          await issue.addComment(msg.toString());
+        }
+      } else if (updateNeeded) {
+        nonMigratedIssues.add(issue);
+        continue;
+      } else {
+        final String msg = 'Further migration is not needed.\n';
         await issue.moveToProjectColumn(targetColumnName);
         await issue.addComment(msg);
         await issue.closeIssue();
-        // close issue.
-        continue;
       }
-
-      // Update script had an error.
-      if (inManualIntervention) {
-        // Issue is already waiting for manual intervention.
-        continue;
-      }
-      final StringBuffer msg = StringBuffer();
-      msg.write('Manual intervention is needed.\n\n');
-      msg.write('Executed command `$_updateScriptArgs ${args.join(' ')}`\n\n');
-      msg.write('stdout:\n```\n');
-      msg.write(result.stdout);
-      msg.write('\n```\n\n');
-      msg.write('stderr:\n```\n');
-      msg.write(result.stdout);
-      msg.write('\n```');
-      await issue.moveToProjectColumn('Need Manual Intervention');
-      await issue.addComment(msg.toString());
     }
     return nonMigratedIssues;
   }
 
-  void handleTodo(GitHubProject project) async {
-    List<GitHubIssue> issues = await project.getColumnIssues('TODO');
+  void handleTodo(List<GitHubIssue> issues) async {
     issues = await closeIfMigrated(issues, 'No Need To Migrate');
-
   }
 
-  void handlePrSent(GitHubProject project) async {
-    List<GitHubIssue> issues = await project.getColumnIssues('PR Sent');
+  void handlePrSent(List<GitHubIssue> issues) async {
     issues = await closeIfMigrated(issues, 'Migrated');
   }
 
-  void handlePrMerged(GitHubProject project) async {
-    List<GitHubIssue> issues = await project.getColumnIssues('PR Merged');
+  void handlePrMerged(List<GitHubIssue> issues) async {
     issues = await closeIfMigrated(issues, 'Migrated');
   }
 
-  void handleNeedManualIntervention(GitHubProject project) async {
-    List<GitHubIssue> issues = await project.getColumnIssues('Need Manual Intervention');
+  void handleNeedManualIntervention(List<GitHubIssue> issues) async {
     issues = await closeIfMigrated(issues, 'Migrated', inManualIntervention: true);
   }
 }
