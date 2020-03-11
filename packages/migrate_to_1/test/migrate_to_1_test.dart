@@ -88,7 +88,7 @@ void main() {
     expect(retval, 0);
   });
 
-  test('pubspec does without the target depenency', () async {
+  test('pubspec without the target depenency', () async {
     final File pubspecFile = await executable.fs.currentDirectory.childFile('pubspec.yaml').create();
     await pubspecFile.writeAsString(pubspecWithNoShareDependency);
     final retval = await executable.main(['validate', 'share', '0.6.5+4']);

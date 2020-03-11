@@ -10,6 +10,7 @@ dependencies:
   args: ^1.5.3
   http: ^0.12.0+4
   meta: ^1.1.8
+  file: ^5.1.0
 
 dev_dependencies:
   pedantic: ^1.8.0
