@@ -19,9 +19,12 @@ class StepCommand extends BaseLscCommand {
     argParser.addOption(
         requiredOption('update_script'),
         help: 'Required. The command to execute to apply the LSC to the package.');
-    argParser.addOption(
+    argParser.addMultiOption(
         ('update_script_args'),
         help: 'Optional. Additional arguments to pass to the update script.');
+    argParser.addOption(
+        ('update_script_options'),
+        help: 'Optional. Additional options to pass to the update script.');
   }
 
   @override
@@ -31,7 +34,8 @@ class StepCommand extends BaseLscCommand {
   String get name => 'step';
 
   String _updateScript;
-  String _updateScriptArgs;
+  List<String> _updateScriptArgs;
+  String _updateScriptOptions;
   List<String> _dependentPackagesOf;
 
   @override
@@ -47,6 +51,7 @@ class StepCommand extends BaseLscCommand {
     final String projectNumber = argResults['project'];
     _updateScript = argResults['update_script'];
     _updateScriptArgs = argResults['update_script_args'];
+    _updateScriptOptions = argResults['update_script_options'];
 
     final GitHubClient gitHub = GitHubClient(token);
     final GitHubRepository repository = await gitHub.getRepository(owner, repositoryName);
@@ -78,7 +83,9 @@ class StepCommand extends BaseLscCommand {
       StringBuffer errorMessage = StringBuffer();
       bool hadError = false;
       for (String dependency in _dependentPackagesOf) {
-        final List<String> args = ['is_change_needed', '${issue.package}', '--script_args=$_updateScriptArgs'];
+        final List<String> args = [];
+        args.addAll(_updateScriptArgs);
+        args.addAll(['is_change_needed', '${dependency}', '--script_args=$_updateScriptOptions']);
         final ProcessResult result = await Process.run(
           _updateScript,
           args,
@@ -90,7 +97,7 @@ class StepCommand extends BaseLscCommand {
         }
         if (result.exitCode != 0) {
           hadError = true;
-          errorMessage.write('Executed command `$_updateScriptArgs ${args.join(' ')}`\n\n');
+          errorMessage.write('Executed is_change_needed script with options: `$_updateScriptOptions`\n\n');
           errorMessage.write('stdout:\n```\n');
           errorMessage.write(result.stdout);
           errorMessage.write('\n```\n\n');
@@ -101,6 +108,7 @@ class StepCommand extends BaseLscCommand {
       }
 
       if (hadError) {
+        print('errors running is_change_needed:\n${errorMessage.toString()}');
         if (!inManualIntervention) {
           final String msg = 'Manual intervention is needed\n\n${errorMessage.toString()}';
           await issue.moveToProjectColumn('Need Manual Intervention');
