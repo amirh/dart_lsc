@@ -3,11 +3,27 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class GitHubIssue {
-  GitHubIssue(this.repository, this.issueId) : assert(repository != null), assert(issueId != null);
+  GitHubIssue(this.repository, this.number, this.title) :
+        assert(repository != null),
+        assert(number != null),
+        assert(title != null);
 
   final GitHubRepository repository;
-  final String issueId;
+  final int number;
+  final String title;
 
+  String get package {
+    int closingBracketIndex = title.indexOf(']');
+    if (!title.startsWith('[') || closingBracketIndex == -1) {
+      throw Exception('Expecting issue title to start with "[<package]" was: $title');
+    }
+    return title.substring(1, closingBracketIndex);
+  }
+
+  @override
+  String toString() {
+    return 'GitHubIssue{number: $number, title: $title}';
+  }
 }
 
 class GitHubProject {
@@ -53,6 +69,64 @@ class GitHubProject {
     return columns;
   }
 
+  Future<List<GitHubIssue>> getColumnIssues(String columnName) async {
+    if (!columns.containsKey(columnName)) {
+      throw Exception('Column "$columnName" does not exist in project $url');
+    }
+    final int pageSize = 100;
+    String cursor = null;
+    int seen = 0;
+    int totalCount;
+    List<GitHubIssue> allIssues = [];
+    do {
+      String pageFilter;
+      if (cursor == null) {
+        pageFilter = 'first: $pageSize';
+      } else {
+        pageFilter = 'first: $pageSize after:"$cursor"';
+      }
+      final String query = '''
+        query {
+          node(id:"${columns[columnName]}") {
+            ... on ProjectColumn {
+              cards($pageFilter) {
+                totalCount
+                edges {
+                  node {
+                    content {
+                      ... on Issue {
+                        id
+                        number
+                        title
+                      }
+                    }
+                  }
+                  cursor
+                }
+              }
+            }
+          }
+        }
+      ''';
+      Map<String, dynamic> result = await repository.client.executeGraphQL(query);
+      print ('$result');
+      Map<String, dynamic> cards = result['data']['node']['cards'];
+      totalCount = cards['totalCount'];
+      if (totalCount == 0) {
+        break;
+      }
+      cursor = cards['edges'].last['cursor'];
+
+      for (Map<String,dynamic> edge in cards['edges']) {
+        Map<String, dynamic> issueMap = edge['node']['content'];
+        allIssues.add(GitHubIssue(repository, issueMap['number'], issueMap['title']));
+      }
+      seen += pageSize;
+    } while (seen < totalCount);
+
+    return allIssues;
+  }
+
   void createIssue(String title, String body) async {
     final String query = '''
       mutation {
@@ -88,6 +162,27 @@ class GitHubProject {
     await repository.client.executeGraphQL(query);
   }
 
+  Future<List<GitHubIssue>> getIssuesByColumn(String columnName) async {
+    if (!columns.containsKey(columnName)) {
+      throw Exception('No project named "$columnName" in project $url');
+    }
+
+    final String query = '''
+      query {
+        repository(owner:"${repository.owner}", name:"${repository.name}") {
+          project(number:  $projectNumber) {
+            columns(first: 10){
+              nodes {
+                id
+                name
+              }
+            }
+          }
+        }
+      }
+    ''';
+  }
+
 }
 
 class GitHubRepository {
@@ -102,8 +197,8 @@ class GitHubRepository {
   final String owner;
   final String name;
 
-  Future<GitHubProject> getLscProject(int number) async {
-    String projectId = await client.getProjectId(owner, name, '$number');
+  Future<GitHubProject> getLscProject(String number) async {
+    final String projectId = await client.getProjectId(owner, name, number);
     return GitHubProject.initProject(this, projectId, '$number', null);
 
   }
