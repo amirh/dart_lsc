@@ -74,6 +74,7 @@ void main() {
   };
 
   String scriptArgs() => '--script_args=${jsonEncode(compatibleVersions)}';
+
   setUp(() {
     fs = MemoryFileSystem();
   });
@@ -86,6 +87,17 @@ void main() {
     final File pubspecFile = await fs.currentDirectory.childFile('pubspec.yaml').create();
     await pubspecFile.writeAsString(needsUpdatePubspec);
     final retval = await executable.main(['is_change_needed', 'share', scriptArgs()]);
+    expect(retval, 2);
+  });
+
+  test('compatible version is earlier than current minimum', () async {
+    final File pubspecFile = await fs.currentDirectory.childFile('pubspec.yaml').create();
+    await pubspecFile.writeAsString(needsUpdatePubspec);
+
+    final String prevShareValue = compatibleVersions['share'];
+    compatibleVersions['share'] = '0.6.0';
+    final retval = await executable.main(['is_change_needed', 'share', scriptArgs()]);
+    compatibleVersions['share'] = prevShareValue;
     expect(retval, 2);
   });
 

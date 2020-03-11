@@ -38,7 +38,7 @@ class MigrateTo1 extends Migration {
     }
 
     Dependency dependency = pubspec.dependencies[dependencyName];
-    if (!(pubspec.dependencies['share'] is HostedDependency)) {
+    if (!(pubspec.dependencies[dependencyName] is HostedDependency)) {
       return IsChangeNeededResult(error: "Can't migrate a non hosted depenency: $dependency");
     }
     HostedDependency hostedDependency = dependency;
@@ -50,7 +50,9 @@ class MigrateTo1 extends Migration {
       );
     }
 
-    if (!constraint.allows(Version.parse(compatibleDepenencyVersion))) {
+    VersionConstraint compatibleDependencyRange =
+      VersionConstraint.compatibleWith(Version.parse(compatibleDepenencyVersion));
+    if (compatibleDependencyRange.intersect(constraint).isEmpty) {
       return IsChangeNeededResult(
         isChangeNeeded: false,
         message: '${pubspec.name} is not compatible with $dependencyName $compatibleDepenencyVersion',
