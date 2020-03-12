@@ -1,7 +1,7 @@
 name: dart_lsc
 description: A tool for shepherding Large Scale Changes in the Dart ecosystem.
-# version: 1.0.0
-# homepage: https://www.example.com
+version: 0.0.1
+homepage: https://github.com/amirh/dart_lsc/tree/master/packages/dart_lsc
 
 environment:
   sdk: '>=2.7.0 <3.0.0'
