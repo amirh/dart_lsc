@@ -93,4 +93,4 @@ Remember that `dart_lsc` automates most of the workflow, if something required h
 "Needs Manual Intervention" column that's where you should be looking after running a step.
 
 ### Record your LSC
-If you're using `dart_lsc` for a migration please list your migration in this [tracking document](http://https://github.com/amirh/dart_lsc/blob/master/LSC_LIST.md).
+If you're using `dart_lsc` for a migration please list your migration in this [tracking document](https://github.com/amirh/dart_lsc/blob/master/LSC_LIST.md).
