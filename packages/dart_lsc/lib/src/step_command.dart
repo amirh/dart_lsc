@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:io' show Process, ProcessResult;
+import 'dart:math' show max;
 
 import 'package:dart_lsc/src/git_repository.dart';
 import 'package:dart_lsc/src/pub_package.dart';
+import 'package:dart_lsc/src/version_bump.dart';
 import 'package:file/file.dart';
 import 'package:file/local.dart';
 
@@ -21,11 +23,14 @@ class StepCommand extends BaseLscCommand {
         requiredOption('update_script'),
         help: 'Required. The command to execute to apply the LSC to the package.');
     argParser.addMultiOption(
-        ('update_script_args'),
+        'update_script_args',
         help: 'Optional. Additional arguments to pass to the update script.');
     argParser.addOption(
-        ('update_script_options'),
+        'update_script_options',
         help: 'Optional. Additional options to pass to the update script.');
+    argParser.addOption(
+        requiredOption('title'),
+        help: 'Required. The title for this migration (used in commit message and changelog entries). Don\'t end the sentence with a period.');
   }
 
   @override
@@ -38,6 +43,7 @@ class StepCommand extends BaseLscCommand {
   List<String> _updateScriptArgs;
   String _updateScriptOptions;
   List<String> _dependentPackagesOf;
+  String _title;
 
   @override
   FutureOr<int> run() async {
@@ -53,6 +59,7 @@ class StepCommand extends BaseLscCommand {
     _updateScript = argResults['update_script'];
     _updateScriptArgs = argResults['update_script_args'];
     _updateScriptOptions = argResults['update_script_options'];
+    _title = argResults['title'];
 
     final GitHubClient gitHub = GitHubClient(token);
     final GitHubRepository repository = await gitHub.getRepository(owner, repositoryName);
@@ -71,7 +78,7 @@ class StepCommand extends BaseLscCommand {
 
   Future<List<GitHubIssue>> closeIfMigrated(List<GitHubIssue> issues, String targetColumnName, {bool inManualIntervention = false}) async {
     Directory baseDir = await fs.systemTempDirectory.createTemp('lsc');
-    print('Downloading packages to $baseDir ..');
+    print('Downloading packages to ${baseDir.path}');
     int i = 0;
     final List<GitHubIssue> nonMigratedIssues = [];
     for (GitHubIssue issue in issues) {
@@ -131,32 +138,75 @@ class StepCommand extends BaseLscCommand {
 
   void handleTodo(List<GitHubIssue> issues) async {
     Directory baseDir = await fs.systemTempDirectory.createTemp('lsc');
+    print('Creating git clones at ${baseDir.path}');
     issues = await closeIfMigrated(issues, 'No Need To Migrate');
     for (GitHubIssue issue in issues) {
       PubPackage pubPackage = PubPackage(issue.package);
       String homepage = await pubPackage.fetchHomepageUrl();
       GitHubGitRepository repository = GitHubGitRepository.fromUrl(homepage);
       if (repository == null) {
-        issue.markManualIntervention("dart_lsc can't detect a git repository base on url: $homepage");
+        issue.markManualIntervention(
+            "dart_lsc can't detect a git repository base on url: $homepage");
         continue;
       }
       print('cloning $repository');
       GitClone clone;
       try {
         clone = await repository.clone(baseDir);
-      } catch(e) {
+      } catch (e) {
         issue.markManualIntervention("dart_lsc failed cloning\n```\n$e\n```");
         continue;
       }
       if (!clone.pubspec.existsSync()) {
-        issue.markManualIntervention("dart_lsc can't find the package's pubspec on git");
+        issue.markManualIntervention(
+            "dart_lsc can't find the package's pubspec on git");
         continue;
       }
+
+      bool hadError = false;
+      StringBuffer errorMessage = StringBuffer();
+      int versionBump = 10;
+      for (String dependency in _dependentPackagesOf) {
+        final List<String> args = [];
+        args.addAll(_updateScriptArgs);
+        args.addAll([
+          'migrate',
+          '${dependency}',
+          '--script_args=$_updateScriptOptions'
+        ]);
+        final ProcessResult result = await Process.run(
+          _updateScript,
+          args,
+          workingDirectory: clone.packageDirectory.path,
+        );
+
+        if (result.exitCode == 1) {
+          hadError = true;
+          errorMessage.write(
+              'Executed migrate script with options: `$_updateScriptOptions`\n\n');
+          errorMessage.write('stdout:\n```\n');
+          errorMessage.write(result.stdout);
+          errorMessage.write('\n```\n\n');
+          errorMessage.write('stderr:\n```\n');
+          errorMessage.write(result.stderr);
+          errorMessage.write('\n```\n\n');
+        }
+
+        versionBump = max(versionBump, result.exitCode);
+      }
       // if failed move to manual intervention
+      if (hadError) {
+        print('errors running is_change_needed:\n${errorMessage.toString()}');
+        final String msg = 'Manual intervention is needed\n\n${errorMessage
+            .toString()}';
+        await issue.markManualIntervention(msg);
+        continue;
+      }
+      bumpVersion(clone.packageDirectory, versionBump, '  * $_title. ([dart_lsc](http://github.com/amirh/dart_lsc))');
     }
   }
 
-  void handlePrSent(List<GitHubIssue> issues) async {
+    void handlePrSent(List<GitHubIssue> issues) async {
     issues = await closeIfMigrated(issues, 'Migrated');
   }
 
