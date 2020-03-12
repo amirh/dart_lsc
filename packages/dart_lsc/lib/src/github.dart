@@ -423,6 +423,14 @@ class GitHubRepository {
   }
 }
 
+class GitHubAuthData {
+  GitHubAuthData(this.scopes, this.userName, this.userLogin);
+
+  final Set<String> scopes;
+  final String userName;
+  final String userLogin;
+}
+
 class GitHubClient {
   static final Uri GitHubEndPoint = Uri.https('api.github.com', '/graphql');
   static final String GitHubV3EndPoint = 'api.github.com';
@@ -488,6 +496,47 @@ class GitHubClient {
     return result['data']['repository']['project']['id'];
   }
 
+  // Returns null if the client is properly authenticated, an error message otherwise.
+  Future<String> verifyAuthentication() async {
+    try {
+      final GitHubAuthData authData = await getAuthData();
+      if (!authData.scopes.contains('repo')) {
+        return 'A valid GitHub token with the "repo" scope is required';
+      }
+    } on GitHubAuthException catch (e) {
+      return 'Failed to authenticate. Reponse was:\n${e.message}';
+    }
+
+    return null;
+  }
+
+  Future<GitHubAuthData> getAuthData() async {
+    final String query = '''
+      query {
+        viewer {
+          name
+          login
+        }
+      }
+    ''';
+
+    http.Response response = await executeGraphQLRawResponse(query);
+
+    Set<String> scopes = {};
+    if (response.headers.containsKey('x-oauth-scopes')) {
+      String scopesString = response.headers['x-oauth-scopes'];
+      scopes.addAll(scopesString.split(', '));
+    }
+
+    Map<String, dynamic> result = jsonDecode(response.body);
+
+    return GitHubAuthData(
+      scopes,
+      result['data']['viewer']['name'],
+      result['data']['viewer']['login'],
+    );
+  }
+
   void forkRepository(String owner, String repository) async {
     // Forking is not supported by the GitHub GraphQl v3 API.
     // Using the v3 REST API.
@@ -505,7 +554,12 @@ class GitHubClient {
   }
 
   dynamic executeGraphQL(String query) async {
+    http.Response response = await executeGraphQLRawResponse(query);
 
+    return jsonDecode(response.body);
+  }
+
+  Future<http.Response> executeGraphQLRawResponse(String query) async {
     final String command = jsonEncode({
       'query': query,
     });
@@ -517,13 +571,29 @@ class GitHubClient {
       },
     );
 
+    if (response.statusCode == 401) { // Unauthorized
+      Map<String, dynamic> body = jsonDecode(response.body);
+
+      throw GitHubAuthException(
+          body.containsKey('message') ? body['message'] : 'GitHub authentication failed'
+      );
+    }
     if (response.statusCode != 200) {
       throw Exception('Failed posting query to GitHub response was: ${response.body}\ncommand was: $command');
     }
 
-    return jsonDecode(response.body);
-  }
-
-  dynamic executeRestV3Post(String path) async {
+    return response;
   }
 }
+
+class GitHubAuthException implements Exception {
+  GitHubAuthException(this.message);
+
+  final String message;
+
+  @override
+  String toString() {
+    return 'GitHubAuthException{message: $message}';
+  }
+}
+

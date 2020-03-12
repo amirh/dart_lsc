@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show stderr;
 
 import 'package:dart_lsc/src/base_command.dart';
 import 'package:dart_lsc/src/dependents_fetcher.dart';
@@ -31,6 +32,13 @@ class InitializeCommand extends BaseLscCommand {
     final String title = argResults['title'];
 
     final GitHubClient gitHub = GitHubClient(token);
+
+    final String errorMsg = await gitHub.verifyAuthentication();
+    if (errorMsg != null) {
+      stderr.write("$errorMsg\n");
+      return 1;
+    }
+
     final GitHubRepository repository = await gitHub.getRepository(owner, repositoryName);
     final GitHubProject project = await repository.createLscProject(title);
 

@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io' show Process, ProcessResult;
+import 'dart:io' show Process, ProcessResult, stderr;
 import 'dart:math' show max;
 
 import 'package:dart_lsc/src/git_repository.dart';
@@ -70,6 +70,12 @@ class StepCommand extends BaseLscCommand {
     _prBody = argResults['pr_body'];
 
     _gitHubClient = GitHubClient(token);
+
+    final String errorMsg = await _gitHubClient.verifyAuthentication();
+    if (errorMsg != null) {
+      stderr.write("$errorMsg\n");
+      return 1;
+    }
 
     final GitHubRepository repository = await _gitHubClient.getRepository(_owner, repositoryName);
     final GitHubProject project = await repository.getLscProject(projectNumber);
