@@ -3,6 +3,20 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:meta/meta.dart';
 
+class GitHubPullRequest {
+  GitHubPullRequest(this.id, this.merged, this.commentsCount, this.closed);
+
+  final String id;
+  final bool merged;
+  final int commentsCount;
+  final bool closed;
+
+  @override
+  String toString() {
+    return 'GitHubPullRequest{id: $id, merged: $merged, commentsCount: $commentsCount}';
+  }
+}
+
 class GitHubIssue {
   GitHubIssue(this.repository, this.project, this.number, this.id, this.title, this.cardId, this.body) :
         assert(repository != null),
@@ -207,7 +221,6 @@ class GitHubProject {
         }
       ''';
       Map<String, dynamic> result = await repository.client.executeGraphQL(query);
-      print ('$result');
       Map<String, dynamic> cards = result['data']['node']['cards'];
       totalCount = cards['totalCount'];
       if (totalCount == 0) {
@@ -357,7 +370,7 @@ class GitHubRepository {
     ''';
 
     print('query would have been:\n$query');
-    return 'https://github.com/flutter/plugins/pull/2599';
+    return 'https://github.com/flutter/plugins/pull/2597';
     // dynamic result = await client.executeGraphQL(query);
     // String url = result['data']['createPullRequest']['pullRequest']['url'];
     // return url;
@@ -375,6 +388,30 @@ class GitHubClient {
   Future<GitHubRepository> getRepository(String owner, String repository) async {
     final String repositoryId = await getRepositoryId(owner, repository);
     return GitHubRepository(this, repositoryId, owner, repository);
+  }
+
+  Future<GitHubPullRequest> getPullRequest(String owner, String repository, String number) async {
+    final String query = '''
+      query {
+        repository(owner:"$owner", name:"$repository") {
+          pullRequest(number:$number) {
+            id
+            merged
+            closed
+            comments {
+              totalCount
+            }
+          }
+        }
+      }
+    ''';
+
+    Map<String, dynamic> result = await executeGraphQL(query);
+    String id = result['data']['repository']['pullRequest']['id'];
+    bool merged = result['data']['repository']['pullRequest']['merged'];
+    bool closed = result['data']['repository']['pullRequest']['closed'];
+    int commentsCount = result['data']['repository']['pullRequest']['comments']['totalCount'];
+    return GitHubPullRequest(id, merged, commentsCount, closed);
   }
 
   Future<String> getRepositoryId(String owner, String repository) async {

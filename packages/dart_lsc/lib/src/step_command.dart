@@ -269,6 +269,32 @@ class StepCommand extends BaseLscCommand {
 
     void handlePrSent(List<GitHubIssue> issues) async {
     issues = await closeIfMigrated(issues, 'Migrated');
+    for (GitHubIssue issue in issues) {
+      try {
+        final Map<String, dynamic> metadata = issue.getMetadata();
+        final Uri prUri = Uri.parse(metadata['pr']);
+        final String owner = prUri.pathSegments[0];
+        final String repository = prUri.pathSegments[1];
+        final String number = prUri.pathSegments[3];
+
+        GitHubPullRequest pullRequest = await _gitHubClient.getPullRequest(
+            owner, repository, number);
+        if (pullRequest.merged) {
+          await issue.moveToProjectColumn('PR Merged');
+          continue;
+        }
+        if (pullRequest.closed) {
+          await issue.markManualIntervention('PR was closed without merging');
+          continue;
+        }
+        if (pullRequest.commentsCount > 0) {
+          await issue.markManualIntervention('PR have comments');
+          continue;
+        }
+      } catch (e) {
+        issue.markManualIntervention(e.toString());
+      }
+    }
   }
 
   void handlePrMerged(List<GitHubIssue> issues) async {
