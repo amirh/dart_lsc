@@ -70,6 +70,6 @@ class InitializeCommand extends BaseLscCommand {
 String renderIssueBody({@required String packageToMigrate}) {
   return '''This is part of a Large Scale Change managed by [dart_lsc](https://github.com/amirh/dart_lsc).
 
-*Do not edit the title of this comment, it is auto-generated and contains information used by dart_lsc.*
+*Do not edit the title or body of this issue, it is auto-generated and contains information used by dart_lsc.*
  ''';
 }

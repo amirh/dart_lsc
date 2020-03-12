@@ -106,6 +106,32 @@ class GitClone {
     return null;
   }
 
+  void addRemote(String name, String uri) async {
+    ProcessResult result = await Process.run(
+      'git',
+      ['remote', 'add', name, uri],
+      workingDirectory: baseDirectory.path,
+    );
+    if (result.exitCode != 0) {
+      print('git add stdout: ${result.stdout}');
+      print('git add stderr: ${result.stderr}');
+      throw Exception('git remote add failed for $uri');
+    }
+  }
+
+  void push(String remoteName, String branch) async{
+    ProcessResult result = await Process.run(
+      'git',
+      ['push', remoteName, branch],
+      workingDirectory: baseDirectory.path,
+    );
+    if (result.exitCode != 0) {
+      print('git push stdout: ${result.stdout}');
+      print('git push stderr: ${result.stderr}');
+      throw Exception('Failed executing git push $remoteName $branch\nstderr:\n${result.stderr}');
+    }
+  }
+
   @override
   String toString() {
     return 'GitClone{repository: $repository, baseDirectory: $baseDirectory}';

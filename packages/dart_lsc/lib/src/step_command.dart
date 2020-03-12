@@ -31,6 +31,9 @@ class StepCommand extends BaseLscCommand {
     argParser.addOption(
         requiredOption('title'),
         help: 'Required. The title for this migration (used in commit message and changelog entries). Don\'t end the sentence with a period.');
+    argParser.addOption(
+        requiredOption('pr_body'),
+        help: 'Required. The body of migration PRs sent by the tool.');
   }
 
   @override
@@ -39,11 +42,15 @@ class StepCommand extends BaseLscCommand {
   @override
   String get name => 'step';
 
+
+  GitHubClient _gitHubClient;
+  String _owner;
   String _updateScript;
   List<String> _updateScriptArgs;
   String _updateScriptOptions;
   List<String> _dependentPackagesOf;
   String _title;
+  String _prBody;
 
   @override
   FutureOr<int> run() async {
@@ -53,16 +60,18 @@ class StepCommand extends BaseLscCommand {
 
     _dependentPackagesOf = argResults['dependent_packages_of'];
     final String token = argResults['github_auth_token'];
-    final String owner = argResults['tracking_repository_owner'];
+    _owner = argResults['tracking_repository_owner'];
     final String repositoryName = argResults['tracking_repository'];
     final String projectNumber = argResults['project'];
     _updateScript = argResults['update_script'];
     _updateScriptArgs = argResults['update_script_args'];
     _updateScriptOptions = argResults['update_script_options'];
     _title = argResults['title'];
+    _prBody = argResults['pr_body'];
 
-    final GitHubClient gitHub = GitHubClient(token);
-    final GitHubRepository repository = await gitHub.getRepository(owner, repositoryName);
+    _gitHubClient = GitHubClient(token);
+
+    final GitHubRepository repository = await _gitHubClient.getRepository(_owner, repositoryName);
     final GitHubProject project = await repository.getLscProject(projectNumber);
 
     List<GitHubIssue> todoIssues = await project.getColumnIssues('TODO');
@@ -207,7 +216,7 @@ class StepCommand extends BaseLscCommand {
       error = await bumpVersion(
           clone.packageDirectory,
           versionBump,
-          '  * $_title. ([dart_lsc](http://github.com/amirh/dart_lsc))'
+          '* $_title. ([dart_lsc](http://github.com/amirh/dart_lsc))'
       );
       if (error != null) {
         print('failed bumping version:\b$error');
@@ -216,13 +225,45 @@ class StepCommand extends BaseLscCommand {
         continue;
       }
 
-      error = await clone.addAndCommit('[dart_lsc] $_title');
+      String changeTitle = '[dart_lsc] $_title';
+      error = await clone.addAndCommit(changeTitle);
       if (error != null) {
         print('$error');
         final String msg = 'Manual intervention is needed\n\n$error';
         await issue.markManualIntervention(msg);
         continue;
       }
+
+      try {
+        print ('forking ${repository.owner}/${repository.repository} on GitHub');
+        await _gitHubClient.forkRepository(repository.owner, repository.repository);
+        await clone.addRemote(
+            'staging',
+            'git@github.com:${_owner}/${repository.repository}.git'
+        );
+        print ('staging change');
+        await clone.push('staging', 'master');
+        GitHubRepository gitHubRepository = await _gitHubClient.getRepository(
+            repository.owner, repository.repository);
+        String prUrl = await gitHubRepository.sendPullRequest(
+            targetBranch: 'master',
+            sendingOwner: _owner,
+            headBranch: 'master',
+            title: changeTitle,
+            body: _prBody);
+
+        final Map<String, dynamic> issueMetadata = issue.getMetadata();
+        issueMetadata['pr'] = prUrl;
+        issue.setMetadata(issueMetadata);
+        issue.moveToProjectColumn('PR Sent');
+        issue.addComment('Sent migration PR: $prUrl');
+      } catch (e) {
+        print('$e');
+        final String msg = 'Manual intervention is needed\n\n```\n$e\n```';
+        await issue.markManualIntervention(msg);
+        continue;
+      }
+
     }
   }
 

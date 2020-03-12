@@ -1,9 +1,10 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:meta/meta.dart';
 
 class GitHubIssue {
-  GitHubIssue(this.repository, this.project, this.number, this.id, this.title, this.cardId) :
+  GitHubIssue(this.repository, this.project, this.number, this.id, this.title, this.cardId, this.body) :
         assert(repository != null),
         assert(number != null),
         assert(title != null);
@@ -14,6 +15,7 @@ class GitHubIssue {
   String id;
   final String title;
   final String cardId;
+  final String body;
 
   String get package {
     int closingBracketIndex = title.indexOf(']');
@@ -60,6 +62,52 @@ class GitHubIssue {
     final String query = '''
       mutation {
         closeIssue(input:{issueId:"$id"}) {
+          clientMutationId
+        }
+      }
+    ''';
+
+    await repository.client.executeGraphQL(query);
+  }
+
+  Map<String, dynamic> getMetadata() {
+    List<String> lines = body.split('\n');
+    bool inMetadataSection = false;
+    StringBuffer rawMetadata = StringBuffer();
+    for (String line in lines) {
+      if (line == '```') {
+        if (!inMetadataSection) {
+          inMetadataSection = true;
+          continue;
+        }
+        break;
+      }
+      if (inMetadataSection) {
+        rawMetadata.write('$line\n');
+      }
+    }
+    if (!inMetadataSection) {
+      return {};
+    }
+    return jsonDecode(rawMetadata.toString());
+  }
+
+  void setMetadata(Map<String, dynamic> metaData) async {
+    List<String> lines = body.split('\n');
+    StringBuffer newBody = StringBuffer();
+    for (String line in lines) {
+      if (line == '```') {
+        break;
+      }
+      newBody.write('$line\n');
+    }
+    newBody.write('```\n');
+    newBody.write('${jsonEncode(metaData)}\n');
+    newBody.write('```');
+
+    final String query = '''
+      mutation {
+        updateIssue(input:{id:"$id",body:"""$newBody"""}) {
           clientMutationId
         }
       }
@@ -147,6 +195,7 @@ class GitHubProject {
                         id
                         number
                         title
+                        body
                       }
                     }
                   }
@@ -170,12 +219,13 @@ class GitHubProject {
         Map<String, dynamic> issueMap = edge['node']['content'];
         String cardId = edge['node']['id'];
         allIssues.add(GitHubIssue(
-            repository,
-            this,
-            issueMap['number'],
-            issueMap['id'],
-            issueMap['title'],
-            cardId
+          repository,
+          this,
+          issueMap['number'],
+          issueMap['id'],
+          issueMap['title'],
+          cardId,
+          issueMap['body'],
         ));
       }
       seen += pageSize;
@@ -282,10 +332,41 @@ class GitHubRepository {
     return GitHubProject.initProject(this, projectId, '$projectNumber', url);
   }
 
+  Future<String> sendPullRequest({
+    @required String targetBranch,
+    @required String sendingOwner,
+    @required String headBranch,
+    @required String title,
+    @required String body,
+  }) async {
+    String input =
+        'baseRefName:"$targetBranch",'
+        'headRefName:"$sendingOwner:$headBranch",'
+        'repositoryId:"$repositoryId",'
+        'maintainersCanModify:true,'
+        'title:"$title",'
+        'body:"$body"';
+    final String query = '''
+      mutation {
+        createPullRequest(input:{$input}) {
+          pullRequest {
+            url
+          }
+        }
+      }
+    ''';
 
+    print('query would have been:\n$query');
+    return 'https://github.com/flutter/plugins/pull/2599';
+    // dynamic result = await client.executeGraphQL(query);
+    // String url = result['data']['createPullRequest']['pullRequest']['url'];
+    // return url;
+  }
 }
+
 class GitHubClient {
   static final Uri GitHubEndPoint = Uri.https('api.github.com', '/graphql');
+  static final String GitHubV3EndPoint = 'api.github.com';
 
   GitHubClient(this._authToken) : assert(_authToken != null);
 
@@ -324,6 +405,22 @@ class GitHubClient {
     return result['data']['repository']['project']['id'];
   }
 
+  void forkRepository(String owner, String repository) async {
+    // Forking is not supported by the GitHub GraphQl v3 API.
+    // Using the v3 REST API.
+    Uri uri = Uri.https('api.github.com', '/repos/$owner/$repository/forks');
+
+    http.Response response = await http.post(uri,
+      headers: {
+        'Authorization': 'token $_authToken',
+      },
+    );
+
+    if (response.statusCode != 202) {
+      throw Exception('Failed posting request to GitHub response was: ${response.body}\nUri was: $uri');
+    }
+  }
+
   dynamic executeGraphQL(String query) async {
 
     final String command = jsonEncode({
@@ -342,5 +439,8 @@ class GitHubClient {
     }
 
     return jsonDecode(response.body);
+  }
+
+  dynamic executeRestV3Post(String path) async {
   }
 }
