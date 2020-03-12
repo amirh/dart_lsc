@@ -63,9 +63,50 @@ class MigrateTo1 extends Migration {
   }
 
   @override
-  Future<bool> update(Directory packageDir, String dependency) {
-    // TODO: implement update
-    throw UnimplementedError();
+  Future<MigrationResult> migrate(Directory packageDir, String dependencyName, String options) async {
+    final File pubspecFile = packageDir.childFile('pubspec.yaml');
+    if (!await pubspecFile.exists()) {
+      return MigrationResult(error: "Can't find a pubspec.yaml file in ${packageDir}");
+    }
+    final Pubspec pubspec = Pubspec.parse(await pubspecFile.readAsString());
+    if (!pubspec.dependencies.containsKey(dependencyName)) {
+      return MigrationResult(
+        error: '${pubspec.name} does not depend on $dependencyName, no migration needed',
+      );
+    }
+
+    Dependency dependency = pubspec.dependencies[dependencyName];
+    if (!(pubspec.dependencies[dependencyName] is HostedDependency)) {
+      return MigrationResult(error: "Can't migrate a non hosted depenency: $dependency");
+    }
+    HostedDependency hostedDependency = dependency;
+
+    VersionRange range = hostedDependency.version;
+    String newConstraint = '\'>=${range.min} <2.0.0\'';
+    String originalConstraint = RegExp.escape(hostedDependency.version.toString());
+
+    List<String> lines = pubspecFile.readAsLinesSync();
+    RegExp needleMatcher = RegExp(
+        '^( *${RegExp.escape(dependencyName)}: *)(["\']?$originalConstraint["\']?)(.*)\$'
+    );
+
+    int matchesCount = 0;
+    for (int i = 0; i < lines.length; i++) {
+      RegExpMatch m = needleMatcher.firstMatch(lines[i]);
+      if (m != null) {
+        lines[i] = '${m[1]}$newConstraint${m[3]}';
+        matchesCount++;
+      }
+    }
+
+    if (matchesCount == 0) {
+      return MigrationResult(error: "Couldn't find $needleMatcher in pubspec.yaml");
+    }
+    if (matchesCount > 1) {
+      return MigrationResult(error: "Found multiple matches for $needleMatcher in pubspec.yaml");
+    }
+    pubspecFile.writeAsStringSync(lines.join('\n'));
+    return MigrationResult(versionBump: VersionBump.PATCH);
   }
 
 }

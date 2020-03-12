@@ -13,12 +13,31 @@ class IsChangeNeededResult {
   final String error;
 }
 
+enum VersionBump {
+  NO_BUMP,
+  PATCH,
+  MINOR,
+  MAJOR,
+}
+
+class MigrationResult {
+  MigrationResult({this.versionBump, this.error}) :
+        assert((versionBump == null) != (error == null));
+
+  // null on error.
+  final VersionBump versionBump;
+
+  // null on success.
+  final String error;
+
+}
+
 abstract class Migration {
 
   // A help string describing how the options string passed to the methods below.
   String get optionsHelp;
 
-  Future<IsChangeNeededResult> isChangeNeeded(Directory packageDir, String dependency, String options);
+  Future<IsChangeNeededResult> isChangeNeeded(Directory packageDir, String dependencyName, String options);
 
-  Future<bool> update(Directory packageDir, String dependency);
+  Future<MigrationResult> migrate(Directory packageDir, String dependencyName, String options);
 }
