@@ -39,7 +39,11 @@ class GitHubIssue {
     return title.substring(1, closingBracketIndex);
   }
 
-  void markManualIntervention(String comment) async {
+  void markManualIntervention(String comment, {bool dryRun=false}) async {
+    if (dryRun) {
+      print('[dry_run] Marking $package for manual intervention with comment: $comment');
+      return;
+    }
     await addComment(comment);
     moveToProjectColumn('Need Manual Intervention');
   }

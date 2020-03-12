@@ -34,6 +34,7 @@ class StepCommand extends BaseLscCommand {
     argParser.addOption(
         requiredOption('pr_body'),
         help: 'Required. The body of migration PRs sent by the tool.');
+    argParser.addFlag('dry_run', help: 'Stage changes locally without updating GitHub');
   }
 
   @override
@@ -51,6 +52,7 @@ class StepCommand extends BaseLscCommand {
   List<String> _dependentPackagesOf;
   String _title;
   String _prBody;
+  bool _dryRun;
 
   @override
   FutureOr<int> run() async {
@@ -68,6 +70,7 @@ class StepCommand extends BaseLscCommand {
     _updateScriptOptions = argResults['update_script_options'];
     _title = argResults['title'];
     _prBody = argResults['pr_body'];
+    _dryRun = argResults['dry_run'];
 
     _gitHubClient = GitHubClient(token);
 
@@ -85,10 +88,15 @@ class StepCommand extends BaseLscCommand {
     List<GitHubIssue> prMergedIssues = await project.getColumnIssues('PR Merged');
     List<GitHubIssue> manualInterventionIssues = await project.getColumnIssues('Need Manual Intervention');
 
+    if (_dryRun) {
+      print('Executing a dry run');
+    }
     await handleTodo(todoIssues);
-    await handlePrSent(prSentIssues);
-    await handlePrMerged(prMergedIssues);
-    await handleNeedManualIntervention(manualInterventionIssues);
+    if (!_dryRun) {
+      await handlePrSent(prSentIssues);
+      await handlePrMerged(prMergedIssues);
+      await handleNeedManualIntervention(manualInterventionIssues);
+    }
   }
 
   Future<List<GitHubIssue>> closeIfMigrated(List<GitHubIssue> issues, String targetColumnName, {bool inManualIntervention = false}) async {
@@ -134,14 +142,17 @@ class StepCommand extends BaseLscCommand {
         print('errors running is_change_needed:\n${errorMessage.toString()}');
         if (!inManualIntervention) {
           final String msg = 'Manual intervention is needed\n\n${errorMessage.toString()}';
-          await issue.moveToProjectColumn('Need Manual Intervention');
-          await issue.addComment(msg.toString());
+          await issue.markManualIntervention(msg, dryRun: _dryRun);
         }
       } else if (updateNeeded) {
         nonMigratedIssues.add(issue);
         continue;
       } else {
         final String msg = 'Further migration is not needed.\n';
+        if (_dryRun) {
+          print('[dry_run] Further migration is not needed for ${issue.package}');
+          continue;
+        }
         await issue.moveToProjectColumn(targetColumnName);
         await issue.addComment(msg);
         await issue.closeIssue();
@@ -162,15 +173,17 @@ class StepCommand extends BaseLscCommand {
 
   void handleTodo(List<GitHubIssue> issues) async {
     Directory baseDir = await fs.systemTempDirectory.createTemp('lsc');
-    print('Creating git clones at ${baseDir.path}');
     issues = await closeIfMigrated(issues, 'No Need To Migrate');
+    print('Creating git clones at ${baseDir.path}');
     for (GitHubIssue issue in issues) {
       PubPackage pubPackage = PubPackage(issue.package);
       String homepage = await pubPackage.fetchHomepageUrl();
       GitHubGitRepository repository = GitHubGitRepository.fromUrl(homepage);
       if (repository == null) {
         issue.markManualIntervention(
-            "dart_lsc can't detect a git repository base on url: $homepage");
+          "dart_lsc can't detect a git repository base on url: $homepage",
+          dryRun: _dryRun,
+        );
         continue;
       }
       print('cloning $repository');
@@ -178,12 +191,14 @@ class StepCommand extends BaseLscCommand {
       try {
         clone = await repository.clone(baseDir);
       } catch (e) {
-        issue.markManualIntervention("dart_lsc failed cloning\n```\n$e\n```");
+        issue.markManualIntervention("dart_lsc failed cloning\n```\n$e\n```", dryRun: _dryRun);
         continue;
       }
       if (!clone.pubspec.existsSync()) {
         issue.markManualIntervention(
-            "dart_lsc can't find the package's pubspec on git");
+          "dart_lsc can't find the package's pubspec on git",
+          dryRun: _dryRun,
+        );
         continue;
       }
 
@@ -223,7 +238,7 @@ class StepCommand extends BaseLscCommand {
         print('errors running is_change_needed:\n${errorMessage.toString()}');
         final String msg = 'Manual intervention is needed\n\n${errorMessage
             .toString()}';
-        await issue.markManualIntervention(msg);
+        await issue.markManualIntervention(msg, dryRun: _dryRun);
         continue;
       }
       String error;
@@ -245,7 +260,12 @@ class StepCommand extends BaseLscCommand {
       if (error != null) {
         print('$error');
         final String msg = 'Manual intervention is needed\n\n$error';
-        await issue.markManualIntervention(msg);
+        await issue.markManualIntervention(msg, dryRun: _dryRun);
+        continue;
+      }
+
+      if (_dryRun) {
+        print('[dry_run] Staging change from ${clone.packageDirectory.path}');
         continue;
       }
 

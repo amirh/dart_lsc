@@ -69,6 +69,8 @@ class InitializeCommand extends BaseLscCommand {
     print('  --project=${project.projectNumber}\\');
     print('  --github_auth_token=<token>\\');
     print('  --dependent_packages_of=${dependentPackagesOf.join(',')}\\');
+    print('  --title="$title"\\');
+    print('  --pr_body=<pr_body>\\');
     print('  --update_script=<update_script>\\');
     print('  [--update_script_args=<args>]');
     return 0;
