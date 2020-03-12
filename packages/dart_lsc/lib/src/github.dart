@@ -317,6 +317,52 @@ class GitHubRepository {
   final String owner;
   final String name;
 
+  Future<Set<String>> getForks() async {
+    final int pageSize = 100;
+    String cursor = null;
+    int totalCount;
+    int seen = 0;
+    Set<String> allForks = {};
+    do {
+      String pageFilter;
+      if (cursor == null) {
+        pageFilter = 'first: $pageSize';
+      } else {
+        pageFilter = 'first: $pageSize after:"$cursor"';
+      }
+      final String query = '''
+        query {
+          node(id:"$repositoryId") {
+            ... on Repository {
+              forks(affiliations:[OWNER],$pageFilter) {
+                totalCount
+                edges {
+                  node {
+                    nameWithOwner
+                  }
+                  cursor
+                }
+              }
+            }
+          }
+        }
+    ''';
+      dynamic result = await client.executeGraphQL(query);
+      Map<String, dynamic> forks = result['data']['node']['forks'];
+      totalCount = forks['totalCount'];
+      if (totalCount == 0) {
+        break;
+      }
+      cursor = forks['edges'].last['cursor'];
+      for (Map<String,dynamic> edge in forks['edges']) {
+        allForks.add(edge['node']['nameWithOwner']);
+      }
+      seen += pageSize;
+    } while (seen < totalCount);
+
+    return allForks;
+  }
+
   Future<GitHubProject> getLscProject(String number) async {
     final String projectId = await client.getProjectId(owner, name, number);
     return GitHubProject.initProject(this, projectId, '$number', null);

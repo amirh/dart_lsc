@@ -235,6 +235,15 @@ class StepCommand extends BaseLscCommand {
       }
 
       try {
+
+        GitHubRepository gitHubRepository = await _gitHubClient.getRepository(
+            repository.owner, repository.repository);
+
+        Set<String> forks = await gitHubRepository.getForks();
+        if (forks.contains('$_owner/${repository.repository}')) {
+          issue.markManualIntervention('The $_owner/${repository.repository} fork already exists');
+          continue;
+        }
         print ('forking ${repository.owner}/${repository.repository} on GitHub');
         await _gitHubClient.forkRepository(repository.owner, repository.repository);
         await clone.addRemote(
@@ -243,8 +252,6 @@ class StepCommand extends BaseLscCommand {
         );
         print ('staging change');
         await clone.push('staging', 'master');
-        GitHubRepository gitHubRepository = await _gitHubClient.getRepository(
-            repository.owner, repository.repository);
         String prUrl = await gitHubRepository.sendPullRequest(
             targetBranch: 'master',
             sendingOwner: _owner,
