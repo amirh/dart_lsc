@@ -1,7 +1,7 @@
 name: migrate_to_1
 description: A tool for migrating depndent packages to support the 1.0.0 version.
-# version: 1.0.0
-# homepage: https://www.example.com
+version: 0.0.1
+homepage: https://github.com/amirh/dart_lsc/tree/master/packages/migrate_to_1
 
 environment:
   sdk: '>=2.7.0 <3.0.0'
