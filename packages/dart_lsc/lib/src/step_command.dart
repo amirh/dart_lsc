@@ -145,6 +145,15 @@ class StepCommand extends BaseLscCommand {
         await issue.moveToProjectColumn(targetColumnName);
         await issue.addComment(msg);
         await issue.closeIssue();
+
+        final Map<String, dynamic> metadata = issue.getMetadata();
+        if (metadata.containsKey('pr')) {
+          final Uri prUri = Uri.parse(metadata['pr']);
+          final String repository = prUri.pathSegments[1];
+
+          print('Deleting repository $_owner/$repository');
+          await _gitHubClient.deleteRepository(_owner, repository);
+        }
       }
     }
     baseDir.delete(recursive: true);

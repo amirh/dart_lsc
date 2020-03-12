@@ -500,8 +500,8 @@ class GitHubClient {
   Future<String> verifyAuthentication() async {
     try {
       final GitHubAuthData authData = await getAuthData();
-      if (!authData.scopes.contains('repo')) {
-        return 'A valid GitHub token with the "repo" scope is required';
+      if (!authData.scopes.containsAll(['repo', 'delete_repo'])) {
+        return 'A valid GitHub token with the "repo" and "delete_repo" scopes is required';
       }
     } on GitHubAuthException catch (e) {
       return 'Failed to authenticate. Reponse was:\n${e.message}';
@@ -549,6 +549,22 @@ class GitHubClient {
     );
 
     if (response.statusCode != 202) {
+      throw Exception('Failed posting request to GitHub response was: ${response.body}\nUri was: $uri');
+    }
+  }
+
+  void deleteRepository(String owner, String repository) async {
+    // Forking is not supported by the GitHub GraphQl v3 API.
+    // Using the v3 REST API.
+    Uri uri = Uri.https('api.github.com', '/repos/$owner/$repository');
+
+    http.Response response = await http.delete(uri,
+      headers: {
+        'Authorization': 'token $_authToken',
+      },
+    );
+
+    if (response.statusCode != 204) {
       throw Exception('Failed posting request to GitHub response was: ${response.body}\nUri was: $uri');
     }
   }
