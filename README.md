@@ -54,7 +54,7 @@ Project URL: https://github.com/<owner>/<tracking_repository>/projects/1
 
 This is what the initialized project looked like when I created an LSC for the `battery` plugin:
 
-[initialized project screenshot](https://raw.githubusercontent.com/amirh/dart_lsc/master/docs/images/battery_project_initialized.png)
+![](https://raw.githubusercontent.com/amirh/dart_lsc/master/docs/images/battery_project_initialized.png)
 
 ### The LSC project
 LSC are tracked in a GitHub project, with columns that represent what each package is waiting for.
