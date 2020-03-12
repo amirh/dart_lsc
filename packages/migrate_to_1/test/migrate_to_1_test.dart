@@ -256,6 +256,15 @@ void main() {
       // nothing changed
       expect(migratedPubspec, pubspecWithNoShareDependency);
     });
+
+    test('e2e', () async {
+      final File pubspecFile = await fs.currentDirectory.childFile('pubspec.yaml').create();
+      await pubspecFile.writeAsString(needsUpdatePubspec);
+      final retval = await executable.main(['migrate', 'share', scriptArgs()]);
+      expect(retval, 11);
+      String migratedPubspec = pubspecFile.readAsStringSync();
+      expect(migratedPubspec, updatedPubspec1);
+    });
   });
 }
 
