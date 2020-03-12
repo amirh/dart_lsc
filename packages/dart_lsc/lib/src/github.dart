@@ -402,7 +402,7 @@ class GitHubRepository {
         'baseRefName:"$targetBranch",'
         'headRefName:"$sendingOwner:$headBranch",'
         'repositoryId:"$repositoryId",'
-        'maintainersCanModify:true,'
+        'maintainerCanModify:true,'
         'title:"$title",'
         'body:"$body"';
     final String query = '''
@@ -415,11 +415,11 @@ class GitHubRepository {
       }
     ''';
 
-    print('query would have been:\n$query');
-    return 'https://github.com/flutter/plugins/pull/2597';
-    // dynamic result = await client.executeGraphQL(query);
-    // String url = result['data']['createPullRequest']['pullRequest']['url'];
-    // return url;
+    //print('query would have been:\n$query');
+    //return 'https://github.com/flutter/plugins/pull/2597';
+    dynamic result = await client.executeGraphQL(query);
+    String url = result['data']['createPullRequest']['pullRequest']['url'];
+    return url;
   }
 }
 
