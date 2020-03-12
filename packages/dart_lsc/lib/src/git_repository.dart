@@ -81,6 +81,31 @@ class GitClone {
 
   File get pubspec => packageDirectory.childFile('pubspec.yaml');
 
+  Future<String> addAndCommit(String msg) async {
+    ProcessResult result = await Process.run(
+      'git',
+      ['add', '.'],
+      workingDirectory: baseDirectory.path,
+    );
+    if (result.exitCode != 0) {
+      print('git add stdout: ${result.stdout}');
+      print('git add stderr: ${result.stderr}');
+      return 'git add failed for ${repository.repository}';
+    }
+
+    result = await Process.run(
+      'git',
+      ['commit', '-m', msg],
+      workingDirectory: baseDirectory.path,
+    );
+    if (result.exitCode != 0) {
+      print('git commit stdout: ${result.stdout}');
+      print('git commit stderr: ${result.stderr}');
+      return 'git commit failed for ${repository.repository}';
+    }
+    return null;
+  }
+
   @override
   String toString() {
     return 'GitClone{repository: $repository, baseDirectory: $baseDirectory}';

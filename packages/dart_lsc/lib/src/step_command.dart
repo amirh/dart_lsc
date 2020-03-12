@@ -202,7 +202,27 @@ class StepCommand extends BaseLscCommand {
         await issue.markManualIntervention(msg);
         continue;
       }
-      bumpVersion(clone.packageDirectory, versionBump, '  * $_title. ([dart_lsc](http://github.com/amirh/dart_lsc))');
+      String error;
+
+      error = await bumpVersion(
+          clone.packageDirectory,
+          versionBump,
+          '  * $_title. ([dart_lsc](http://github.com/amirh/dart_lsc))'
+      );
+      if (error != null) {
+        print('failed bumping version:\b$error');
+        final String msg = 'Manual intervention is needed\n\n$error';
+        await issue.markManualIntervention(msg);
+        continue;
+      }
+
+      error = await clone.addAndCommit('[dart_lsc] $_title');
+      if (error != null) {
+        print('$error');
+        final String msg = 'Manual intervention is needed\n\n$error';
+        await issue.markManualIntervention(msg);
+        continue;
+      }
     }
   }
 
