@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:dart_lsc/src/pub_package.dart';
 import 'package:file/file.dart';
 import 'package:path/path.dart' as path;
 
@@ -12,15 +13,19 @@ class GitHubGitRepository {
   final String repository;
   final String path;
 
-  static GitHubGitRepository fromUrl(String url) {
+  static GitHubGitRepository fromUrl(PubUrls urls) {
+    return _fromUrl(urls.homepage) ?? _fromUrl(urls.repository);
+  }
+
+  static GitHubGitRepository _fromUrl(String url) {
     Uri uri;
     try {
       uri = Uri.parse(url);
     } catch(FormatException) {
-     return null;
+      return null;
     }
 
-    if (uri.authority != 'github.com') {
+    if (!['github.com', 'www.github.com'].contains(uri.authority)) {
       return null;
     }
 

@@ -180,11 +180,11 @@ class StepCommand extends BaseLscCommand {
     print('Creating git clones at ${baseDir.path}');
     for (GitHubIssue issue in issuesToMigrate.keys) {
       PubPackage pubPackage = PubPackage(issue.package);
-      String homepage = await pubPackage.fetchHomepageUrl();
-      GitHubGitRepository repository = GitHubGitRepository.fromUrl(homepage);
+      PubUrls urls = await pubPackage.fetchHomepageUrl();
+      GitHubGitRepository repository = GitHubGitRepository.fromUrl(urls);
       if (repository == null) {
         issue.markManualIntervention(
-          "dart_lsc can't detect a git repository base on url: $homepage",
+          "dart_lsc can't detect a git repository {homepage: '${urls.homepage}' repository: '${urls.repository}|",
           dryRun: _dryRun,
         );
         continue;

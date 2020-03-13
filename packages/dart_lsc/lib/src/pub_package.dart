@@ -3,23 +3,29 @@ import 'dart:io' as io;
 
 import 'package:file/file.dart';
 import 'package:http/http.dart' as http;
-import 'package:file/local.dart';
 
-FileSystem fs = LocalFileSystem();
+class PubUrls {
+  PubUrls({this.homepage, this.repository});
 
+  final String homepage;
+  final String repository;
+}
 class PubPackage {
   PubPackage(this.name) : assert(name != null);
 
   final String name;
 
-  Future<String> fetchHomepageUrl() async {
+  Future<PubUrls> fetchHomepageUrl() async {
     Uri metadataUri = Uri.https('pub.dev', '/api/packages/$name');
     http.Response response = await http.get(metadataUri);
     if (response.statusCode != 200) {
       throw Exception('Failed fetching $metadataUri response was: ${response.body}');
     }
     Map<String, dynamic> responseMap = jsonDecode(response.body);
-    return responseMap['latest']['pubspec']['homepage'];
+    return PubUrls(
+      homepage: responseMap['latest']['pubspec']['homepage'],
+      repository: responseMap['latest']['pubspec']['repository'],
+    );
   }
 
   Future<Directory> fetchLatest(Directory baseDirectory) async {
