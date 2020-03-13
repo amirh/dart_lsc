@@ -34,13 +34,18 @@ class GitHubGitRepository {
     }
 
     final String owner = uri.pathSegments[0];
-    final String repository = uri.pathSegments[1];
+    String repository = uri.pathSegments[1];
     String prefix = '/$owner/$repository';
-    if (uri.pathSegments.length > 3 && uri.pathSegments[2] == 'tree') {
+    String path = '';
+    if (uri.pathSegments.length > 3 && ['tree', 'blob'].contains(uri.pathSegments[2])) {
       prefix = '$prefix/${uri.pathSegments[2]}/${uri.pathSegments[3]}/';
+       path = uri.path.substring(prefix.length);
     };
 
-    final String path = uri.path.substring(prefix.length);
+
+    if (repository.endsWith('.git')) {
+      repository = repository.substring(0, repository.length - 4);
+    }
 
     return GitHubGitRepository(owner, repository, path);
   }

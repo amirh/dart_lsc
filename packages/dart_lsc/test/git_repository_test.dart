@@ -43,5 +43,12 @@ void main() {
     ));
     expect(repository, GitHubGitRepository('jamiewest', 'version_tracking', ''));
   });
+
+  test('.git suffix', () async {
+    GitHubGitRepository repository = GitHubGitRepository.fromUrl(PubUrls(
+      homepage: 'https://github.com/yeniel/version_migration.git/issues',
+    ));
+    expect(repository, GitHubGitRepository('yeniel', 'version_migration', ''));
+  });
 }
 
