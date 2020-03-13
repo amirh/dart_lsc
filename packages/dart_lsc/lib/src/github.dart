@@ -138,6 +138,16 @@ class GitHubIssue {
   String toString() {
     return 'GitHubIssue{number: $number, title: $title}';
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is GitHubIssue &&
+          runtimeType == other.runtimeType &&
+          id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
 }
 
 class GitHubProject {

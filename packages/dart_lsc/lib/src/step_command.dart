@@ -99,18 +99,20 @@ class StepCommand extends BaseLscCommand {
     }
   }
 
-  Future<List<GitHubIssue>> closeIfMigrated(List<GitHubIssue> issues, String targetColumnName, {bool inManualIntervention = false}) async {
+  /// Returns an issue->dependencies map, with a key for every package that
+  /// still need to be migrated, and the value are it's dependencies we
+  /// need to migrate for.
+  Future<Map<GitHubIssue, List<String>>> closeIfMigrated(List<GitHubIssue> issues, String targetColumnName, {bool inManualIntervention = false}) async {
     Directory baseDir = await fs.systemTempDirectory.createTemp('lsc');
     print('Downloading packages to ${baseDir.path}');
     int i = 0;
-    final List<GitHubIssue> nonMigratedIssues = [];
+    final Map<GitHubIssue,List<String>> nonMigratedIssues = {};
     for (GitHubIssue issue in issues) {
       i++;
       PubPackage package = PubPackage(issue.package);
       print ('Fetching package $i of ${issues.length} (${package.name})');
       Directory packageDir = await package.fetchLatest(baseDir);
 
-      bool updateNeeded = false;
       StringBuffer errorMessage = StringBuffer();
       bool hadError = false;
       for (String dependency in _dependentPackagesOf) {
@@ -123,7 +125,10 @@ class StepCommand extends BaseLscCommand {
           workingDirectory: packageDir.path,
         );
         if (result.exitCode == 2) {
-          updateNeeded = true;
+          if(!nonMigratedIssues.containsKey(issue)) {
+            nonMigratedIssues[issue] = [];
+          }
+          nonMigratedIssues[issue].add(dependency);
           continue;
         }
         if (result.exitCode != 0) {
@@ -139,15 +144,13 @@ class StepCommand extends BaseLscCommand {
       }
 
       if (hadError) {
+        nonMigratedIssues.remove(issue);
         print('errors running is_change_needed:\n${errorMessage.toString()}');
         if (!inManualIntervention) {
           final String msg = 'Manual intervention is needed\n\n${errorMessage.toString()}';
           await issue.markManualIntervention(msg, dryRun: _dryRun);
         }
-      } else if (updateNeeded) {
-        nonMigratedIssues.add(issue);
-        continue;
-      } else {
+      } else if (!nonMigratedIssues.containsKey(issue)) {
         final String msg = 'Further migration is not needed.\n';
         if (_dryRun) {
           print('[dry_run] Further migration is not needed for ${issue.package}');
@@ -173,9 +176,9 @@ class StepCommand extends BaseLscCommand {
 
   void handleTodo(List<GitHubIssue> issues) async {
     Directory baseDir = await fs.systemTempDirectory.createTemp('lsc');
-    issues = await closeIfMigrated(issues, 'No Need To Migrate');
+    Map<GitHubIssue, List<String>> issuesToMigrate = await closeIfMigrated(issues, 'No Need To Migrate');
     print('Creating git clones at ${baseDir.path}');
-    for (GitHubIssue issue in issues) {
+    for (GitHubIssue issue in issuesToMigrate.keys) {
       PubPackage pubPackage = PubPackage(issue.package);
       String homepage = await pubPackage.fetchHomepageUrl();
       GitHubGitRepository repository = GitHubGitRepository.fromUrl(homepage);
@@ -205,7 +208,7 @@ class StepCommand extends BaseLscCommand {
       bool hadError = false;
       StringBuffer errorMessage = StringBuffer();
       int versionBump = 10;
-      for (String dependency in _dependentPackagesOf) {
+      for (String dependency in issuesToMigrate[issue]) {
         final List<String> args = [];
         args.addAll(_updateScriptArgs);
         args.addAll([
@@ -310,7 +313,7 @@ class StepCommand extends BaseLscCommand {
   }
 
     void handlePrSent(List<GitHubIssue> issues) async {
-    issues = await closeIfMigrated(issues, 'Migrated');
+    issues = (await closeIfMigrated(issues, 'Migrated')).keys;
     for (GitHubIssue issue in issues) {
       try {
         final Map<String, dynamic> metadata = issue.getMetadata();
@@ -340,10 +343,10 @@ class StepCommand extends BaseLscCommand {
   }
 
   void handlePrMerged(List<GitHubIssue> issues) async {
-    issues = await closeIfMigrated(issues, 'Migrated');
+    issues = (await closeIfMigrated(issues, 'Migrated')).keys;
   }
 
   void handleNeedManualIntervention(List<GitHubIssue> issues) async {
-    issues = await closeIfMigrated(issues, 'Migrated', inManualIntervention: true);
+    issues = (await closeIfMigrated(issues, 'Migrated', inManualIntervention: true)).keys;
   }
 }
