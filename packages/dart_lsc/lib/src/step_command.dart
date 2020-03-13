@@ -313,7 +313,7 @@ class StepCommand extends BaseLscCommand {
   }
 
     void handlePrSent(List<GitHubIssue> issues) async {
-    issues = (await closeIfMigrated(issues, 'Migrated')).keys;
+    issues = (await closeIfMigrated(issues, 'Migrated')).keys.toList();
     for (GitHubIssue issue in issues) {
       try {
         final Map<String, dynamic> metadata = issue.getMetadata();
@@ -343,10 +343,10 @@ class StepCommand extends BaseLscCommand {
   }
 
   void handlePrMerged(List<GitHubIssue> issues) async {
-    issues = (await closeIfMigrated(issues, 'Migrated')).keys;
+    issues = (await closeIfMigrated(issues, 'Migrated')).keys.toList();
   }
 
   void handleNeedManualIntervention(List<GitHubIssue> issues) async {
-    issues = (await closeIfMigrated(issues, 'Migrated', inManualIntervention: true)).keys;
+    issues = (await closeIfMigrated(issues, 'Migrated', inManualIntervention: true)).keys.toList();
   }
 }

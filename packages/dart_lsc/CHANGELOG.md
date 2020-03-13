@@ -1,3 +1,7 @@
+## 0.0.2+1
+
+* Fix a bug with not converting an iterable to a list.
+
 ## 0.0.2
 
 * Delete fork after package migration is complete.
