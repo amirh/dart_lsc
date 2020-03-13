@@ -1,12 +1,12 @@
-# Dart LSC
+# Dart LSC (Large Scale Change) Tool
 
 A tool for shepherding changes through the Dart ecosystem.
 
 ## Usage
 
 Each LSC starts with a piece of code that can modify a given package. This piece of code is the `Migration`.
-A `Migration` has a fairly simple interface, with just 2 core methods, one method determines if a package need to be
-changed. And applies the change to a given package.
+A `Migration` has a fairly simple interface, with just 2 core methods, one method determines if a package needs to be
+changed, and the other applies the change to a single package.
 
 ```dart
 abstract class Migration {
