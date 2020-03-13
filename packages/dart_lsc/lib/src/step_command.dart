@@ -192,7 +192,7 @@ class StepCommand extends BaseLscCommand {
       print('cloning $repository');
       GitClone clone;
       try {
-        clone = await repository.clone(baseDir);
+        clone = await repository.clone(baseDir, issue.package);
       } catch (e) {
         issue.markManualIntervention("dart_lsc failed cloning\n```\n$e\n```", dryRun: _dryRun);
         continue;
