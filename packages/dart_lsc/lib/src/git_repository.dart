@@ -24,6 +24,10 @@ class GitHubGitRepository {
       return null;
     }
 
+    if (uri.pathSegments.length < 2) {
+      return null;
+    }
+
     final String owner = uri.pathSegments[0];
     final String repository = uri.pathSegments[1];
     String prefix = '/$owner/$repository';

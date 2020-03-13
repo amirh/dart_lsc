@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:dart_lsc/src/git_repository.dart';
 import 'package:test/test.dart';
 
@@ -15,5 +13,10 @@ void main() {
     expect(repository, GitHubGitRepository('flutter', 'plugins', 'packages/battery'));
     repository = GitHubGitRepository.fromUrl('https://github.com/debuggerx01/battery_indicator');
     expect(repository, GitHubGitRepository('debuggerx01', 'battery_indicator', ''));
+  });
+
+  test('Not a GitHub Repo URL', () async {
+    GitHubGitRepository repository = GitHubGitRepository.fromUrl('https://github.com/wiatec');
+    expect(repository, null);
   });
 }
