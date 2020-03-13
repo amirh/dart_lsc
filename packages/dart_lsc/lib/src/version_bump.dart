@@ -50,18 +50,18 @@ Future<String> bumpVersion(Directory packageDir, int bumpType, String changelogE
     return "Found multiple matches for $needleMatcher in pubspec.yaml";
   }
   await pubspecFile.writeAsString(lines.join('\n'));
-  return updateChangelog(packageDir, newVersion.toString(), changelogEntryBody);
+  updateChangelog(packageDir, newVersion.toString(), changelogEntryBody);
+  return null;
 }
 
-Future<String> updateChangelog(Directory packageDir, String newVersion, String changelogEntryBody) async {
+void updateChangelog(Directory packageDir, String newVersion, String changelogEntryBody) async {
   final File changelogFile = packageDir.childFile('CHANGELOG.md');
   if (!changelogFile.existsSync()) {
-    return "Can't find $changelogFile";
+    return;
   }
   final StringBuffer newContents = StringBuffer();
   newContents.write('## $newVersion\n\n');
   newContents.write('$changelogEntryBody\n\n');
   newContents.write(await changelogFile.readAsString());
   await changelogFile.writeAsString(newContents.toString());
-  return null;
 }
