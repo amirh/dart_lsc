@@ -3,6 +3,7 @@ import 'dart:io' as io;
 
 import 'package:file/file.dart';
 import 'package:http/http.dart' as http;
+import 'package:pub_semver/pub_semver.dart';
 
 class PubUrls {
   PubUrls({this.homepage, this.repository});
@@ -10,21 +11,32 @@ class PubUrls {
   final String homepage;
   final String repository;
 }
+
 class PubPackage {
-  PubPackage(this.name) : assert(name != null);
+  PubPackage({this.name, this.homepage, this.repository, this.latestVersion})
+      : assert(name != null);
 
   final String name;
+  final String homepage;
+  final String repository;
+  Version latestVersion;
 
-  Future<PubUrls> fetchHomepageUrl() async {
+  static Future<PubPackage> loadFromIssue(String name) async {
     Uri metadataUri = Uri.https('pub.dev', '/api/packages/$name');
     http.Response response = await http.get(metadataUri);
     if (response.statusCode != 200) {
       throw Exception('Failed fetching $metadataUri response was: ${response.body}');
     }
     Map<String, dynamic> responseMap = jsonDecode(response.body);
-    return PubUrls(
-      homepage: responseMap['latest']['pubspec']['homepage'],
-      repository: responseMap['latest']['pubspec']['repository'],
+    String homepage = responseMap['latest']['pubspec']['homepage'];
+    String repository = responseMap['latest']['pubspec']['repository'];
+    final String versionString = responseMap['latest']['pubspec']['version'];
+    Version version = Version.parse(versionString);
+    return PubPackage(
+      name: name,
+      homepage: homepage,
+      repository: repository,
+      latestVersion: version
     );
   }
 
@@ -60,4 +72,20 @@ class PubPackage {
       File tarballFile = targetDir.childFile('package.tar.gz');
       await tarballFile.writeAsBytes(response.bodyBytes);
   }
+
+  @override
+  String toString() {
+    return 'PubPackage{name: $name, homepage: $homepage, repository: $repository, latestVersion: $latestVersion}';
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PubPackage &&
+          runtimeType == other.runtimeType &&
+          name == other.name &&
+          latestVersion == other.latestVersion;
+
+  @override
+  int get hashCode => name.hashCode ^ latestVersion.hashCode;
 }

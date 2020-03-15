@@ -13,8 +13,8 @@ class GitHubGitRepository {
   final String repository;
   final String path;
 
-  static GitHubGitRepository fromUrl(PubUrls urls) {
-    return _fromUrl(urls.homepage) ?? _fromUrl(urls.repository);
+  static GitHubGitRepository fromPubUrl(String homepage, String repository) {
+    return _fromUrl(homepage) ?? _fromUrl(repository);
   }
 
   static GitHubGitRepository _fromUrl(String url) {

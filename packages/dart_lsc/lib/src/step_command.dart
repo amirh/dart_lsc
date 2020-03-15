@@ -7,11 +7,41 @@ import 'package:dart_lsc/src/pub_package.dart';
 import 'package:dart_lsc/src/version_bump.dart';
 import 'package:file/file.dart';
 import 'package:file/local.dart';
+import 'package:pub_semver/pub_semver.dart';
+import 'package:pubspec_parse/pubspec_parse.dart';
 
 import 'base_command.dart';
 import 'github.dart';
 
 FileSystem fs = LocalFileSystem();
+
+class WorkItem {
+  WorkItem(this.package, this.issue);
+
+  static Future<WorkItem> forIssue(GitHubIssue issue) async {
+    final PubPackage package = await PubPackage.loadFromIssue(issue.package);
+    return WorkItem(package, issue);
+  }
+
+  final PubPackage package;
+  final GitHubIssue issue;
+
+  @override
+  String toString() {
+    return 'WorkItem{package: $package, issue: $issue}';
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is WorkItem &&
+          runtimeType == other.runtimeType &&
+          package == other.package &&
+          issue == other.issue;
+
+  @override
+  int get hashCode => package.hashCode ^ issue.hashCode;
+}
 
 class StepCommand extends BaseLscCommand {
 
@@ -83,35 +113,56 @@ class StepCommand extends BaseLscCommand {
     final GitHubRepository repository = await _gitHubClient.getRepository(_owner, repositoryName);
     final GitHubProject project = await repository.getLscProject(projectNumber);
 
-    List<GitHubIssue> todoIssues = await project.getColumnIssues('TODO');
-    List<GitHubIssue> prSentIssues = await project.getColumnIssues('PR Sent');
-    List<GitHubIssue> prMergedIssues = await project.getColumnIssues('PR Merged');
-    List<GitHubIssue> manualInterventionIssues = await project.getColumnIssues('Need Manual Intervention');
+    Future<List<WorkItem>> mapIssues(Future<List<GitHubIssue>> issuesFuture) async {
+      final List<GitHubIssue> issues = await issuesFuture;
+      Iterable<Future<WorkItem>> workItems = issues.map((GitHubIssue issue) => WorkItem.forIssue(issue));
+      return Future.wait(workItems);
+    }
+
+    List<WorkItem> todo = await mapIssues(project.getColumnIssues('TODO'));
+    List<WorkItem> prSent = await mapIssues(project.getColumnIssues('PR Sent'));
+    List<WorkItem> prMerged = await mapIssues(project.getColumnIssues('PR Merged'));
+    List<WorkItem> manualIntervention = await mapIssues(project.getColumnIssues('Need Manual Intervention'));
 
     if (_dryRun) {
       print('Executing a dry run');
     }
-    await handleTodo(todoIssues);
-    if (!_dryRun) {
-      await handlePrSent(prSentIssues);
-      await handlePrMerged(prMergedIssues);
-      await handleNeedManualIntervention(manualInterventionIssues);
-    }
+    print('Handling TODO cards');
+    await handleTodo(todo);
+    print('Handling PR Sent cards');
+    await handlePrSent(prSent);
+    print('Handling PR Merged cards');
+    await handlePrMerged(prMerged);
+    print('Handling Need Manual Intervention cards');
+    await handleNeedManualIntervention(manualIntervention);
   }
 
   /// Returns an issue->dependencies map, with a key for every package that
   /// still need to be migrated, and the value are it's dependencies we
   /// need to migrate for.
-  Future<Map<GitHubIssue, List<String>>> closeIfMigrated(List<GitHubIssue> issues, String targetColumnName, {bool inManualIntervention = false}) async {
+  Future<Map<WorkItem, List<String>>> closeIfMigrated(List<WorkItem> items, String targetColumnName, {bool inManualIntervention = false}) async {
     Directory baseDir = await fs.systemTempDirectory.createTemp('lsc');
     print('Downloading packages to ${baseDir.path}');
     int i = 0;
-    final Map<GitHubIssue,List<String>> nonMigratedIssues = {};
-    for (GitHubIssue issue in issues) {
+    final Map<WorkItem,List<String>> nonMigrated= {};
+    for (WorkItem item in items) {
       i++;
-      PubPackage package = PubPackage(issue.package);
-      print ('Fetching package $i of ${issues.length} (${package.name})');
+      PubPackage package = item.package;
+      GitHubIssue issue = item.issue;
+      print ('Fetching migration status for package $i of ${items.length} (${package.name})');
+
+      Map<String, dynamic> metadata = issue.getMetadata();
+      if (metadata.containsKey('lastVersionChecked')) {
+        Version lastVersionChecked = Version.parse(metadata['lastVersionChecked']);
+        if (lastVersionChecked == item.package.latestVersion) {
+          print('No change since last check');
+          continue;
+        }
+      }
+
       Directory packageDir = await package.fetchLatest(baseDir);
+      Pubspec pubspec = Pubspec.parse(await packageDir.childFile('pubspec.yaml').readAsString());
+      String versionString = pubspec.version.toString();
 
       StringBuffer errorMessage = StringBuffer();
       bool hadError = false;
@@ -125,10 +176,10 @@ class StepCommand extends BaseLscCommand {
           workingDirectory: packageDir.path,
         );
         if (result.exitCode == 2) {
-          if(!nonMigratedIssues.containsKey(issue)) {
-            nonMigratedIssues[issue] = [];
+          if(!nonMigrated.containsKey(item)) {
+            nonMigrated[item] = [];
           }
-          nonMigratedIssues[issue].add(dependency);
+          nonMigrated[item].add(dependency);
           continue;
         }
         if (result.exitCode != 0) {
@@ -143,14 +194,17 @@ class StepCommand extends BaseLscCommand {
         }
       }
 
+      metadata['lastVersionChecked'] = versionString;
+      await issue.setMetadata(metadata, dryRun: _dryRun);
+
       if (hadError) {
-        nonMigratedIssues.remove(issue);
+        nonMigrated.remove(item);
         print('errors running is_change_needed:\n${errorMessage.toString()}');
         if (!inManualIntervention) {
           final String msg = 'Manual intervention is needed\n\n${errorMessage.toString()}';
           await issue.markManualIntervention(msg, dryRun: _dryRun);
         }
-      } else if (!nonMigratedIssues.containsKey(issue)) {
+      } else if (!nonMigrated.containsKey(item)) {
         final String msg = 'Further migration is not needed.\n';
         if (_dryRun) {
           print('[dry_run] Further migration is not needed for ${issue.package}');
@@ -171,20 +225,20 @@ class StepCommand extends BaseLscCommand {
       }
     }
     baseDir.delete(recursive: true);
-    return nonMigratedIssues;
+    return nonMigrated;
   }
 
-  void handleTodo(List<GitHubIssue> issues) async {
+  void handleTodo(List<WorkItem> items) async {
     Directory baseDir = await fs.systemTempDirectory.createTemp('lsc');
-    Map<GitHubIssue, List<String>> issuesToMigrate = await closeIfMigrated(issues, 'No Need To Migrate');
+    Map<WorkItem, List<String>> itemsToHandle = await closeIfMigrated(items, 'No Need To Migrate');
     print('Creating git clones at ${baseDir.path}');
-    for (GitHubIssue issue in issuesToMigrate.keys) {
-      PubPackage pubPackage = PubPackage(issue.package);
-      PubUrls urls = await pubPackage.fetchHomepageUrl();
-      GitHubGitRepository repository = GitHubGitRepository.fromUrl(urls);
+    for (WorkItem item in itemsToHandle.keys) {
+      GitHubIssue issue = item.issue;
+      PubPackage pubPackage = item.package;
+      GitHubGitRepository repository = GitHubGitRepository.fromPubUrl(pubPackage.homepage, pubPackage.repository);
       if (repository == null) {
         issue.markManualIntervention(
-          "dart_lsc can't detect a git repository {homepage: '${urls.homepage}' repository: '${urls.repository}|",
+          "dart_lsc can't detect a git repository {homepage: '${pubPackage.homepage}' repository: '${pubPackage.repository}|",
           dryRun: _dryRun,
         );
         continue;
@@ -208,7 +262,7 @@ class StepCommand extends BaseLscCommand {
       bool hadError = false;
       StringBuffer errorMessage = StringBuffer();
       int versionBump = 10;
-      for (String dependency in issuesToMigrate[issue]) {
+      for (String dependency in itemsToHandle[item]) {
         final List<String> args = [];
         args.addAll(_updateScriptArgs);
         args.addAll([
@@ -312,8 +366,8 @@ class StepCommand extends BaseLscCommand {
     }
   }
 
-    void handlePrSent(List<GitHubIssue> issues) async {
-    issues = (await closeIfMigrated(issues, 'Migrated')).keys.toList();
+    void handlePrSent(List<WorkItem> items) async {
+    Iterable<GitHubIssue> issues = (await closeIfMigrated(items, 'Migrated')).keys.map((WorkItem i) => i.issue);
     for (GitHubIssue issue in issues) {
       try {
         final Map<String, dynamic> metadata = issue.getMetadata();
@@ -325,28 +379,28 @@ class StepCommand extends BaseLscCommand {
         GitHubPullRequest pullRequest = await _gitHubClient.getPullRequest(
             owner, repository, number);
         if (pullRequest.merged) {
-          await issue.moveToProjectColumn('PR Merged');
+          await issue.moveToProjectColumn('PR Merged', dryRun: _dryRun);
           continue;
         }
         if (pullRequest.closed) {
-          await issue.markManualIntervention('PR was closed without merging');
+          await issue.markManualIntervention('PR was closed without merging', dryRun: _dryRun);
           continue;
         }
         if (pullRequest.commentsCount > 0) {
-          await issue.markManualIntervention('PR have comments');
+          await issue.markManualIntervention('PR have comments', dryRun: _dryRun);
           continue;
         }
       } catch (e) {
-        issue.markManualIntervention(e.toString());
+        issue.markManualIntervention(e.toString(), dryRun: _dryRun);
       }
     }
   }
 
-  void handlePrMerged(List<GitHubIssue> issues) async {
-    issues = (await closeIfMigrated(issues, 'Migrated')).keys.toList();
+  void handlePrMerged(List<WorkItem> items) async {
+    Iterable<GitHubIssue> issues = (await closeIfMigrated(items, 'Migrated')).keys.map((WorkItem i) => i.issue);
   }
 
-  void handleNeedManualIntervention(List<GitHubIssue> issues) async {
-    issues = (await closeIfMigrated(issues, 'Migrated', inManualIntervention: true)).keys.toList();
+  void handleNeedManualIntervention(List<WorkItem> items) async {
+    Iterable<GitHubIssue> issues = (await closeIfMigrated(items, 'Migrated')).keys.map((WorkItem i) => i.issue);
   }
 }

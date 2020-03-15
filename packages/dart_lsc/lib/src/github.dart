@@ -48,10 +48,15 @@ class GitHubIssue {
     moveToProjectColumn('Need Manual Intervention');
   }
 
-  void moveToProjectColumn(String columnName) async {
+  void moveToProjectColumn(String columnName, {bool dryRun=false}) async {
     String columnId = project.columns[columnName];
     if (columnId == null) {
       throw Exception("Can't move card to an unknown column $columnName");
+    }
+
+    if (dryRun) {
+      print('[dry_run] Moving $package to column: $columnName');
+      return;
     }
     final String query = '''
       mutation {
@@ -110,7 +115,11 @@ class GitHubIssue {
     return jsonDecode(rawMetadata.toString());
   }
 
-  void setMetadata(Map<String, dynamic> metaData) async {
+  void setMetadata(Map<String, dynamic> metaData, {bool dryRun: false}) async {
+    if (dryRun) {
+      print('[dry_run] Seting metadata for ${package} to $metaData');
+      return;
+    }
     List<String> lines = body.split('\n');
     StringBuffer newBody = StringBuffer();
     for (String line in lines) {
