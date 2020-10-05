@@ -25,7 +25,7 @@ class MigrateTo1 extends Migration {
     final String compatibleDepenencyVersion = compatibleDependencyVersions[dependencyName];
     if (compatibleDepenencyVersion == null) {
       throw Exception(
-          "Missing information about the minimal version of $dependencyName that is compatible with 1.0.0"
+          'Missing information about the minimal version of $dependencyName that is compatible with 1.0.0'
       );
     }
 
@@ -95,7 +95,7 @@ class MigrateTo1 extends Migration {
       throw Exception("Couldn't find $needleMatcher in pubspec.yaml");
     }
     if (matchesCount > 1) {
-      throw Exception("Found multiple matches for $needleMatcher in pubspec.yaml");
+      throw Exception('Found multiple matches for $needleMatcher in pubspec.yaml');
     }
     pubspecFile.writeAsStringSync(lines.join('\n'));
     return VersionBump.PATCH;

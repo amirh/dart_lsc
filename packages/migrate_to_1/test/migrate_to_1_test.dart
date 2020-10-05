@@ -129,7 +129,7 @@ flutter:
   uses-material-design: true''';
 
 void main() {
-  Map<String, String> compatibleVersions = {
+  Map<String, String> compatibleVersions = <String, String>{
     'share': '0.6.5+4',
   };
 
@@ -140,14 +140,14 @@ void main() {
     executable.fs = fs;
   });
   test('no pubspec', () async {
-    final retval = await executable.main(['is_change_needed', 'share', scriptArgs()]);
+    final int retval = await executable.main(<String>['is_change_needed', 'share', scriptArgs()]);
     expect(retval, 1);
   });
 
   test('pubspec needs update', () async {
     final File pubspecFile = await fs.currentDirectory.childFile('pubspec.yaml').create();
     await pubspecFile.writeAsString(needsUpdatePubspec);
-    final retval = await executable.main(['is_change_needed', 'share', scriptArgs()]);
+    final int retval = await executable.main(<String>['is_change_needed', 'share', scriptArgs()]);
     expect(retval, 2);
   });
 
@@ -157,7 +157,7 @@ void main() {
 
     final String prevShareValue = compatibleVersions['share'];
     compatibleVersions['share'] = '0.6.0';
-    final retval = await executable.main(['is_change_needed', 'share', scriptArgs()]);
+    final int retval = await executable.main(<String>['is_change_needed', 'share', scriptArgs()]);
     compatibleVersions['share'] = prevShareValue;
     expect(retval, 2);
   });
@@ -165,14 +165,14 @@ void main() {
   test('pubspec does not need update', () async {
     final File pubspecFile = await fs.currentDirectory.childFile('pubspec.yaml').create();
     await pubspecFile.writeAsString(updatedPubspec1);
-    final retval = await executable.main(['is_change_needed', 'share', scriptArgs()]);
+    final int retval = await executable.main(<String>['is_change_needed', 'share', scriptArgs()]);
     expect(retval, 0);
   });
 
   test('pubspec without the target dependency', () async {
     final File pubspecFile = await fs.currentDirectory.childFile('pubspec.yaml').create();
     await pubspecFile.writeAsString(pubspecWithNoShareDependency);
-    final retval = await executable.main(['is_change_needed', 'share', scriptArgs()]);
+    final int retval = await executable.main(<String>['is_change_needed', 'share', scriptArgs()]);
     expect(retval, 0);
   });
 
@@ -181,7 +181,7 @@ void main() {
     await pubspecFile.writeAsString(needsUpdatePubspec);
     final String prevShareValue = compatibleVersions['share'];
     compatibleVersions['share'] = '0.7.1';
-    final retval = await executable.main(['is_change_needed', 'share', scriptArgs()]);
+    final int retval = await executable.main(<String>['is_change_needed', 'share', scriptArgs()]);
     compatibleVersions['share'] = prevShareValue;
     expect(retval, 0);
   });
@@ -250,7 +250,7 @@ void main() {
     test('e2e', () async {
       final File pubspecFile = await fs.currentDirectory.childFile('pubspec.yaml').create();
       await pubspecFile.writeAsString(needsUpdatePubspec);
-      final retval = await executable.main(['migrate', 'share', scriptArgs()]);
+      final int retval = await executable.main(<String>['migrate', 'share', scriptArgs()]);
       expect(retval, 11);
       String migratedPubspec = pubspecFile.readAsStringSync();
       expect(migratedPubspec, updatedPubspec1);
