@@ -1,0 +1,8 @@
+dart:
+ - dev
+
+stages:
+ - analyze:
+   - dartanalyzer: --fatal-infos --fatal-warnings .
+ - unit_test:
+   - test
