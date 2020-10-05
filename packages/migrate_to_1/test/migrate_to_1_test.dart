@@ -48,6 +48,26 @@ dev_dependencies:
 flutter:
   uses-material-design: true''';
 
+final String updatedPubspec1Caret = '''
+name: sample_dependent
+description: Description.
+version: 1.2.3
+
+environment:
+  sdk: ">=2.1.0 <3.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  share: ^1.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true''';
+
 final String pubspecWithNoShareDependency = '''
 name: sample_dependent
 description: Description.
@@ -129,8 +149,10 @@ flutter:
   uses-material-design: true''';
 
 void main() {
-  Map<String, String> compatibleVersions = <String, String>{
-    'share': '0.6.5+4',
+  Map<String, dynamic> compatibleVersions = <String, dynamic>{
+    'compatibleVersions': <String, String>{
+      'share': '0.6.5+4',
+    },
   };
 
   String scriptArgs() => '--script_args=${jsonEncode(compatibleVersions)}';
@@ -180,9 +202,9 @@ void main() {
     final File pubspecFile = await fs.currentDirectory.childFile('pubspec.yaml').create();
     await pubspecFile.writeAsString(needsUpdatePubspec);
     final String prevShareValue = compatibleVersions['share'];
-    compatibleVersions['share'] = '0.7.1';
+    compatibleVersions['compatibleVersions']['share'] = '0.7.1';
     final int retval = await executable.main(<String>['is_change_needed', 'share', scriptArgs()]);
-    compatibleVersions['share'] = prevShareValue;
+    compatibleVersions['compatibleVersions']['share'] = prevShareValue;
     expect(retval, 0);
   });
 
@@ -254,6 +276,17 @@ void main() {
       expect(retval, 11);
       String migratedPubspec = pubspecFile.readAsStringSync();
       expect(migratedPubspec, updatedPubspec1);
+    });
+
+    test('update to caret', () async {
+      final File pubspecFile = await fs.currentDirectory.childFile('pubspec.yaml').create();
+      await pubspecFile.writeAsString(needsUpdatePubspec);
+      compatibleVersions['incompatibleBump'] = true;
+      final int retval = await executable.main(<String>['migrate', 'share', '--script_args=${jsonEncode(compatibleVersions)}']);
+      compatibleVersions.remove('incompatibleBump');
+      expect(retval, 11);
+      String migratedPubspec = pubspecFile.readAsStringSync();
+      expect(migratedPubspec, updatedPubspec1Caret);
     });
   });
 }

@@ -20,10 +20,14 @@ class MigrateTo1 extends Migration {
 
     Map<String, dynamic> compatibleDependencyVersions;
     if (options != null) {
-      compatibleDependencyVersions = jsonDecode(options);
+      Map<String, dynamic> optionsJson = jsonDecode(options);
+      if (!optionsJson.containsKey('compatibleVersions')) {
+       throw Exception('Missing "compatibleVersions" key in the options map');
+      }
+      compatibleDependencyVersions = optionsJson['compatibleVersions'];
     }
-    final String compatibleDepenencyVersion = compatibleDependencyVersions[dependencyName];
-    if (compatibleDepenencyVersion == null) {
+    final String compatibleDependencyVersion = compatibleDependencyVersions[dependencyName];
+    if (compatibleDependencyVersion == null) {
       throw Exception(
           'Missing information about the minimal version of $dependencyName that is compatible with 1.0.0'
       );
@@ -47,9 +51,9 @@ class MigrateTo1 extends Migration {
     }
 
     VersionConstraint compatibleDependencyRange =
-      VersionConstraint.compatibleWith(Version.parse(compatibleDepenencyVersion));
+      VersionConstraint.compatibleWith(Version.parse(compatibleDependencyVersion));
     if (compatibleDependencyRange.intersect(constraint).isEmpty) {
-      print('${pubspec.name} is not compatible with $dependencyName $compatibleDepenencyVersion');
+      print('${pubspec.name} is not compatible with $dependencyName $compatibleDependencyVersion');
       return false;
     }
 
@@ -58,6 +62,13 @@ class MigrateTo1 extends Migration {
 
   @override
   Future<VersionBump> migrate(Directory packageDir, String dependencyName, String options, {FileSystem fs = const LocalFileSystem()}) async {
+    bool incompatibleBump = false;
+    if (options != null) {
+      Map<String, dynamic> optionsJson = jsonDecode(options);
+      if (optionsJson.containsKey('incompatibleBump') && optionsJson['incompatibleBump']) {
+        incompatibleBump = true;
+      }
+    }
     final File pubspecFile = packageDir.childFile('pubspec.yaml');
     if (!await pubspecFile.exists()) {
       throw Exception("Can't find a pubspec.yaml file in ${packageDir}");
@@ -74,7 +85,7 @@ class MigrateTo1 extends Migration {
     HostedDependency hostedDependency = dependency;
 
     VersionRange range = hostedDependency.version;
-    String newConstraint = '\'>=${range.min} <2.0.0\'';
+    String newConstraint = incompatibleBump ? '^1.0.0' : '\'>=${range.min} <2.0.0\'';
     String originalConstraint = RegExp.escape(hostedDependency.version.toString());
 
     List<String> lines = pubspecFile.readAsLinesSync();
