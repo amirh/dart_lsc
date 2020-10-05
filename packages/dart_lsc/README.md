@@ -1,5 +1,7 @@
 # Dart LSC (Large Scale Change) Tool
 
+[![Build Status](https://travis-ci.org/amirh/dart_lsc.svg?branch=master)](https://travis-ci.org/amirh/dart_lsc)
+
 A tool for shepherding changes through the Dart ecosystem.
 
 ## Usage
