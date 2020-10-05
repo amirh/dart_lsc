@@ -2,9 +2,8 @@ import 'dart:convert';
 
 import 'package:file/file.dart';
 import 'package:file/memory.dart';
+import 'package:migrate_base/migrate_base.dart';
 import 'package:migrate_to_1/executable.dart' as executable;
-import 'package:migrate_to_1/migrate_base.dart';
-import 'package:migrate_to_1/src/global.dart' show fs;
 import 'package:migrate_to_1/src/migrate_to_1.dart';
 import 'package:test/test.dart';
 
@@ -47,8 +46,7 @@ dev_dependencies:
     sdk: flutter
 
 flutter:
-  uses-material-design: true
-''';
+  uses-material-design: true''';
 
 final String pubspecWithNoShareDependency = '''
 name: sample_dependent
@@ -67,8 +65,7 @@ dev_dependencies:
     sdk: flutter
 
 flutter:
-  uses-material-design: true
-''';
+  uses-material-design: true''';
 
 final String multipleShareMatchesPubspec = '''
 name: sample_dependent
@@ -89,8 +86,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  share: ^0.6.2+1
-''';
+  share: ^0.6.2+1''';
 
 final String quotedConstraintPubspec = '''
 name: sample_dependent
@@ -110,8 +106,7 @@ dev_dependencies:
     sdk: flutter
 
 flutter:
-  uses-material-design: true
-''';
+  uses-material-design: true''';
 
 final String doubleQuotedConstraintPubspec = '''
 name: sample_dependent
@@ -131,8 +126,7 @@ dev_dependencies:
     sdk: flutter
 
 flutter:
-  uses-material-design: true
-''';
+  uses-material-design: true''';
 
 void main() {
   Map<String, String> compatibleVersions = {
@@ -140,9 +134,10 @@ void main() {
   };
 
   String scriptArgs() => '--script_args=${jsonEncode(compatibleVersions)}';
+  FileSystem fs = MemoryFileSystem();
 
   setUp(() {
-    fs = MemoryFileSystem();
+    executable.fs = fs;
   });
   test('no pubspec', () async {
     final retval = await executable.main(['is_change_needed', 'share', scriptArgs()]);
@@ -174,7 +169,7 @@ void main() {
     expect(retval, 0);
   });
 
-  test('pubspec without the target depenency', () async {
+  test('pubspec without the target dependency', () async {
     final File pubspecFile = await fs.currentDirectory.childFile('pubspec.yaml').create();
     await pubspecFile.writeAsString(pubspecWithNoShareDependency);
     final retval = await executable.main(['is_change_needed', 'share', scriptArgs()]);
@@ -192,15 +187,14 @@ void main() {
   });
 
   group('migrate', () {
-    test('succesful migration', () async {
+    test('successful migration', () async {
       final File pubspecFile = await fs.currentDirectory.childFile('pubspec.yaml').create();
       await pubspecFile.writeAsString(needsUpdatePubspec);
       final MigrateTo1 migration = MigrateTo1();
-      final MigrationResult migrationResult = await migration.migrate(
+      final VersionBump versionBump = await migration.migrate(
           fs.currentDirectory, 'share', jsonEncode(compatibleVersions)
       );
-      expect(migrationResult.versionBump, VersionBump.PATCH);
-      expect(migrationResult.error, isNull);
+      expect(versionBump, VersionBump.PATCH);
       String migratedPubspec = pubspecFile.readAsStringSync();
       expect(migratedPubspec, updatedPubspec1);
     });
@@ -209,11 +203,10 @@ void main() {
       final File pubspecFile = await fs.currentDirectory.childFile('pubspec.yaml').create();
       await pubspecFile.writeAsString(quotedConstraintPubspec);
       final MigrateTo1 migration = MigrateTo1();
-      final MigrationResult migrationResult = await migration.migrate(
+      final VersionBump versionBump = await migration.migrate(
           fs.currentDirectory, 'share', jsonEncode(compatibleVersions)
       );
-      expect(migrationResult.versionBump, VersionBump.PATCH);
-      expect(migrationResult.error, isNull);
+      expect(versionBump, VersionBump.PATCH);
       String migratedPubspec = pubspecFile.readAsStringSync();
       expect(migratedPubspec, updatedPubspec1);
     });
@@ -222,11 +215,10 @@ void main() {
       final File pubspecFile = await fs.currentDirectory.childFile('pubspec.yaml').create();
       await pubspecFile.writeAsString(doubleQuotedConstraintPubspec);
       final MigrateTo1 migration = MigrateTo1();
-      final MigrationResult migrationResult = await migration.migrate(
+      final VersionBump versionBump = await migration.migrate(
           fs.currentDirectory, 'share', jsonEncode(compatibleVersions)
       );
-      expect(migrationResult.versionBump, VersionBump.PATCH);
-      expect(migrationResult.error, isNull);
+      expect(versionBump, VersionBump.PATCH);
       String migratedPubspec = pubspecFile.readAsStringSync();
       expect(migratedPubspec, updatedPubspec1);
     });
@@ -235,10 +227,9 @@ void main() {
       final File pubspecFile = await fs.currentDirectory.childFile('pubspec.yaml').create();
       await pubspecFile.writeAsString(multipleShareMatchesPubspec);
       final MigrateTo1 migration = MigrateTo1();
-      final MigrationResult migrationResult = await migration.migrate(
+      expect(migration.migrate(
           fs.currentDirectory, 'share', jsonEncode(compatibleVersions)
-      );
-      expect(migrationResult.error, isNotNull);
+      ), throwsException);
       String migratedPubspec = pubspecFile.readAsStringSync();
       // nothing changed
       expect(migratedPubspec, multipleShareMatchesPubspec);
@@ -248,10 +239,9 @@ void main() {
       final File pubspecFile = await fs.currentDirectory.childFile('pubspec.yaml').create();
       await pubspecFile.writeAsString(pubspecWithNoShareDependency);
       final MigrateTo1 migration = MigrateTo1();
-      final MigrationResult migrationResult = await migration.migrate(
+      expect(migration.migrate(
           fs.currentDirectory, 'share', jsonEncode(compatibleVersions)
-      );
-      expect(migrationResult.error, isNotNull);
+      ), throwsException);
       String migratedPubspec = pubspecFile.readAsStringSync();
       // nothing changed
       expect(migratedPubspec, pubspecWithNoShareDependency);
