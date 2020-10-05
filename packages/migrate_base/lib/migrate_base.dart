@@ -3,11 +3,6 @@
 /// More dartdocs go here.
 library migrate_base;
 
-import 'dart:io';
-
-import 'package:file/file.dart';
-import 'package:meta/meta.dart';
-
 export 'src/migrate_base.dart';
 export 'src/runner.dart' show MigrationRunner;
 
